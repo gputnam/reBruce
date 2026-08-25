@@ -1,0 +1,11 @@
+# Install into a local virtualenv:
+#   python3 -m venv venv
+#   ./venv/bin/pip install -r requirements.txt
+# Tested with: numpy 2.5.2, uproot 5.7.6, awkward 2.13.0, PyYAML 6.0.3,
+#              pytest 9.1.1, matplotlib 3.11.1 (python 3.13, macOS)
+numpy
+uproot>=5.5
+awkward>=2.0
+pyyaml
+pytest
+matplotlib

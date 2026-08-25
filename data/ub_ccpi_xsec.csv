@@ -1,0 +1,45 @@
+# MicroBooNE CC1pi+/-  PRD 113 032007 (2026) / arXiv:2509.03628
+# AR23 -> data reweight per published differential cross section.
+# sigma_data = unfolded_data_diff/bin_widths_diff (1e-38 cm^2/Ar/x).
+# sigma_ar23: exclusive CC1pi differential xsec from the AR23 GHEP sample,
+#   dsigma/dx = (N_sel,bin/N_total) * <sigma_tot>_Phi / dx, <sigma_tot>_Phi=28.3961 1e-38 cm^2/Ar40,
+#   N_total=1000000, sigma_tot(E) from xsec_graphs.root nu_mu_Ar40/tot_cc (NOT the GHEP xsec field).
+# weight = sigma_data/sigma_ar23 (1.0 where no AR23 events).
+# numu-only sample (numubar signal omitted); MuonMomentum/PionMomentum use full
+# phase space in place of the contained-muon / golden-pion subsets (approximate).
+# selected signal events: 123619.
+obs,bin,x_lo,x_hi,sigma_data,sigma_ar23,weight,note
+MuonCosTheta,0,-1,-0.27,0.296645,0.273653,1.08402,
+MuonCosTheta,1,-0.27,0.29,0.591103,0.832259,0.710239,
+MuonCosTheta,2,0.29,0.46,1.47509,1.61022,0.916075,
+MuonCosTheta,3,0.46,0.58,1.72853,2.24944,0.768426,
+MuonCosTheta,4,0.58,0.67,2.16255,2.94057,0.735418,
+MuonCosTheta,5,0.67,0.77,3.07388,3.86101,0.796132,
+MuonCosTheta,6,0.77,0.82,4.09691,4.88299,0.839016,
+MuonCosTheta,7,0.82,0.88,4.77246,5.88982,0.810289,
+MuonCosTheta,8,0.88,0.93,5.78169,7.5261,0.768219,
+MuonCosTheta,9,0.93,0.97,6.55355,9.08532,0.721334,
+MuonCosTheta,10,0.97,1,6.15478,10.4261,0.590325,
+MuonMomentum,0,0.15,0.23,4.05785,4.66122,0.870555,APPROX: data uses contained-muon subset (not reproducible at truth level)
+MuonMomentum,1,0.23,0.32,4.33058,5.35771,0.808289,APPROX: data uses contained-muon subset (not reproducible at truth level)
+MuonMomentum,2,0.32,0.45,4.86302,4.92191,0.988034,APPROX: data uses contained-muon subset (not reproducible at truth level)
+MuonMomentum,3,0.45,0.66,3.10205,3.74585,0.828129,APPROX: data uses contained-muon subset (not reproducible at truth level)
+MuonMomentum,4,0.66,1.5,1.53124,1.24652,1.22841,APPROX: data uses contained-muon subset (not reproducible at truth level)
+PionCosTheta,0,-1,-0.47,0.424953,0.59321,0.716362,
+PionCosTheta,1,-0.47,0,0.800389,1.01187,0.791002,
+PionCosTheta,2,0,0.39,1.41656,1.5738,0.900092,
+PionCosTheta,3,0.39,0.65,2.18568,2.38691,0.915696,
+PionCosTheta,4,0.65,0.84,2.80863,3.43742,0.817074,
+PionCosTheta,5,0.84,0.93,4.32371,4.58975,0.942035,
+PionCosTheta,6,0.93,1,5.03478,5.99644,0.839629,
+PionMomentum,0,0.1,0.16,7.51939,10.6395,0.70674,APPROX: data uses unscattered golden-pion subset (not reproducible at truth level)
+PionMomentum,1,0.16,0.19,13.6884,12.0257,1.13826,APPROX: data uses unscattered golden-pion subset (not reproducible at truth level)
+PionMomentum,2,0.19,0.22,9.17391,10.3901,0.882945,APPROX: data uses unscattered golden-pion subset (not reproducible at truth level)
+PionMomentum,3,0.22,0.6,6.86694,4.82815,1.42227,APPROX: data uses unscattered golden-pion subset (not reproducible at truth level)
+ThetaMuPi,0,0,0.49,0.470048,0.541496,0.868055,
+ThetaMuPi,1,0.49,0.93,1.18245,1.41432,0.836058,
+ThetaMuPi,2,0.93,1.26,1.39426,1.86648,0.747,
+ThetaMuPi,3,1.26,1.57,1.48272,1.95805,0.757244,
+ThetaMuPi,4,1.57,1.88,1.40474,1.77906,0.789596,
+ThetaMuPi,5,1.88,2.21,1.26137,1.38779,0.908906,
+ThetaMuPi,6,2.21,2.65,0.655117,0.886926,0.738638,

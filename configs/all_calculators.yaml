@@ -1,0 +1,11 @@
+# Full fake-data weight production: all calculators, all W modes.
+# Run with:  ./venv/bin/python reweight.py configs/all_calculators.yaml \
+#                --input <file>.root --output output/<file>_fakedata.root
+output_dir: output
+calculators:
+  - type: mec_bdt
+  - type: qe_zexp_mva_to_lqcd
+  - type: ub_cc1p0pi          # default variable: dpt_dat (2D DeltaAlphaT x DeltaPT)
+  - type: ub_cc2p0pi          # default variable: delta_PT
+  - type: ub_ccpi             # default variable: PionMomentum
+  - type: t2k_nc1pi           # single 2D (p_pi, cos_theta_pi) measurement
