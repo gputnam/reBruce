@@ -1,6 +1,6 @@
-# fake-data-reweighter
+# reBruce
 
-Fake-data reweighting for sBruce files (SBN oscillation analysis). A
+Fake-data re-weighting for sBruce files (SBN oscillation analysis). A
 configurable driver script evaluates per-event weight calculators on the
 truth / GENIE-pre-FSI content of a sBruce file and writes the weights to a
 new **friend TTree** (`fakedataTree`) in a byte-identical copy of the input
