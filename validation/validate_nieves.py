@@ -15,12 +15,13 @@ sign to Eigen's SelfAdjointEigenSolver for this matrix (both are valid;
 the sign of an eigenvector is arbitrary). The comparison therefore matches
 our +v against the stored -v.
 
-Result on ICARUSRun2_SpringMCOverlay_rewgt_2 (1585 numu CC QE events),
-all four dials at v = +-1, +-2, +-3:
+Result on ICARUSRun2_SpringMCOverlay_rewgt_2 (numu CC QE events), all four
+dials at v = +-1, +-2, +-3:
     mean(w_computed / w_stored) = 1.0000, RMS ~ 0.0003-0.002
 which validates the tensor contraction, RPA, Coulomb treatment, form
 factors, AND the hit-nucleon-radius marginalization (r is not stored in
-sBruce; see MISSING_INFO.md).
+sBruce; see MISSING_INFO.md). Antineutrino agreement is looser (bulk ~2%,
+rare high-Q2 RPA-zero-crossing outliers) -- see MISSING_INFO.md item 1.
 
 Usage: ./venv/bin/python validation/validate_nieves.py [sbruce_file]
 """
@@ -38,7 +39,7 @@ from fakedata.nieves import NievesQEXSec                    # noqa: E402
 from fakedata.calculators.qe_zexp import (                  # noqa: E402
     qe_numu_prefsi_mask, qe_kinematics, QE_BRANCHES, GA_CV)
 
-DEFAULT_FILE = ("/Users/gputnam/Work/osc/sbn-rewgted-19-sBruce/"
+DEFAULT_FILE = ("/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20/"
                 "ICARUSRun2_SpringMCOverlay_rewgt_2_sbruce.root")
 
 # verbatim from nusystematics ZExpPCAWeighter_tool.cc (Nature_614_102522)

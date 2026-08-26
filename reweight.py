@@ -33,22 +33,23 @@ GENIE event-record (pre-FSI) kinematics [GeV], -999 when unfilled:
     genie_W                     GENIE-convention W (on-shell nucleon at rest)
     genie_pmiss, genie_emiss    struck-nucleon |p| and removal energy
                                 (cross-checks for the Nieves QE evaluation)
-    genie_prefsi_{lep,p,p2,cpi,pi0,g}_{px,py,pz}
+    genie_prefsi_{lep,p,p2,n}_{px,py,pz}
                                 pre-FSI particle 3-momenta in the nu/lepton
                                 frame (z = nu direction, lepton pT along +y;
                                 genie_prefsi_lep_px == 0):
                                   lep = primary lepton
-                                  p   = leading proton   (status 14)
+                                  p   = leading proton    (status 14)
                                   p2  = subleading proton (status 14)
-                                  cpi = leading charged pion (status 14)
-    genie_prefsi_{...}_{status,fsi}
-                                GHEP status and FSI fate codes (loaded with the
-                                momenta; used only for validity masking)
+                                  n   = leading neutron   (status 14;
+                                        sBruce schema >= 20, used for the
+                                        antineutrino QE reweight)
 
 Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
     true_mu_p,  true_mu_dir_{x,y,z}     true muon momentum and direction
     true_p_p,   true_p_dir_{x,y,z}      leading true proton
     true_p2_p,  true_p2_dir_{x,y,z}     subleading true proton
+    true_cpi_p, true_cpi_dir_{x,y,z}    leading true charged pion
+                                        (sBruce schema >= 20)
     true_np, true_npi, true_npi0        final-state particle counts
 
 Friend tree multisigmaTree (OPTIONAL -- used when present):

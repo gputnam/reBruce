@@ -28,8 +28,8 @@ import numpy as np
 from ..calculator import Calculator, register
 from ..sbruce import valid
 from ..tercile import W_MODES, wmode_weights
-from ..tki import (BE_ECAL, M_MU, M_P, POSTFSI_BRANCHES, PREFSI_PION_BRANCHES,
-                   mom3, opening_cos, prefsi3, sig_cc1p0pi, sig_cc2p0pi,
+from ..tki import (BE_ECAL, M_MU, M_P, POSTFSI_BRANCHES, POSTFSI_PION_BRANCHES,
+                   mom3, opening_cos, sig_cc1p0pi, sig_cc2p0pi,
                    sig_ccpi, sig_t2k_nc1pi, tki_ptx_pty, tki_vars)
 from ..xsec_table import Table1D, TableBins2D, load_t2k_table, load_ub_table
 from .qe_zexp import deut_to_minerva_weight
@@ -212,7 +212,7 @@ class UBCCpi(XSecMeasCalculator):
     _CSV = "ub_ccpi_xsec.csv"
 
     def branches_needed(self):
-        return POSTFSI_BRANCHES + PREFSI_PION_BRANCHES
+        return POSTFSI_BRANCHES + POSTFSI_PION_BRANCHES
 
     def load_table(self):
         return load_ub_table(self._CSV, self.variable)
@@ -221,21 +221,18 @@ class UBCCpi(XSecMeasCalculator):
         return sig_ccpi(a)
 
     def observable(self, a):
-        p_lep = prefsi3(a, "lep")
-        p_cpi = prefsi3(a, "cpi")
-        pmu = np.linalg.norm(p_lep, axis=1)
-        ppi = np.linalg.norm(p_cpi, axis=1)
         with np.errstate(invalid="ignore", divide="ignore"):
             if self.variable == "MuonCosTheta":
-                return (p_lep[:, 2] / pmu,)
+                return (a["true_mu_dir_z"],)
             if self.variable == "MuonMomentum":
-                return (pmu,)
+                return (a["true_mu_p"],)
             if self.variable == "PionCosTheta":
-                return (p_cpi[:, 2] / ppi,)
+                return (a["true_cpi_dir_z"],)
             if self.variable == "PionMomentum":
-                return (ppi,)
+                return (a["true_cpi_p"],)
             if self.variable == "ThetaMuPi":
-                return (np.arccos(opening_cos(p_lep, p_cpi)),)
+                return (np.arccos(opening_cos(mom3(a, "true_mu"),
+                                              mom3(a, "true_cpi"))),)
         raise ValueError(f"unknown variable {self.variable} for {self.calc_name}")
 
 
@@ -246,7 +243,7 @@ class T2KNC1pi(XSecMeasCalculator):
 
     def branches_needed(self):
         return ["nu_E", "true_isnc", "true_pdg", "true_np", "true_npi",
-                "true_npi0"] + PREFSI_PION_BRANCHES
+                "true_npi0"] + POSTFSI_PION_BRANCHES
 
     def load_table(self):
         if self.variable != "p_costh":
@@ -259,8 +256,4 @@ class T2KNC1pi(XSecMeasCalculator):
         return sig_t2k_nc1pi(a)
 
     def observable(self, a):
-        p_cpi = prefsi3(a, "cpi")
-        ppi = np.linalg.norm(p_cpi, axis=1)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            costh = p_cpi[:, 2] / ppi
-        return ppi, costh
+        return a["true_cpi_p"], a["true_cpi_dir_z"]

@@ -1,12 +1,11 @@
 """True-kinematics observables and signal definitions for the
 cross-section-measurement calculators.
 
-Post-FSI observables are computed from the momentum-ordered final-state
-truth branches (true_mu_*, true_p_*, true_p2_*) in detector coordinates
-with the beam along +z. Pion observables are computed from the pre-FSI
-GENIE record (genie_prefsi_cpi_*, genie_prefsi_lep_*) in the nu/lepton
-frame (z along the true neutrino) -- a PLACEHOLDER for missing post-FSI
-pion kinematics; see MISSING_INFO.md.
+All observables are computed from the momentum-ordered final-state truth
+branches (true_mu_*, true_p_*, true_p2_*, and -- since sBruce schema 20 --
+the leading charged pion true_cpi_*) in detector coordinates with the beam
+along +z. The pion's charge is still not stored (true_npi counts
+|pdg| == 211); see MISSING_INFO.md.
 
 Signal definitions mirror the NUISANCE / paper definitions, with particle
 multiplicities taken from the sBruce truth counts (true_np, true_npi,
@@ -42,9 +41,9 @@ POSTFSI_BRANCHES = [
     "true_p2_p", "true_p2_dir_x", "true_p2_dir_y", "true_p2_dir_z",
 ]
 
-PREFSI_PION_BRANCHES = [
-    "genie_prefsi_lep_px", "genie_prefsi_lep_py", "genie_prefsi_lep_pz",
-    "genie_prefsi_cpi_px", "genie_prefsi_cpi_py", "genie_prefsi_cpi_pz",
+# leading charged pion, post-FSI (sBruce schema >= 20)
+POSTFSI_PION_BRANCHES = [
+    "true_cpi_p", "true_cpi_dir_x", "true_cpi_dir_y", "true_cpi_dir_z",
 ]
 
 
@@ -54,12 +53,6 @@ def mom3(a, prefix):
     return p[:, None] * np.stack(
         [a[f"{prefix}_dir_x"], a[f"{prefix}_dir_y"], a[f"{prefix}_dir_z"]],
         axis=1)
-
-
-def prefsi3(a, species):
-    return np.stack([a[f"genie_prefsi_{species}_px"],
-                     a[f"genie_prefsi_{species}_py"],
-                     a[f"genie_prefsi_{species}_pz"]], axis=1)
 
 
 def _acos_deg(c):
@@ -128,30 +121,27 @@ def sig_cc2p0pi(a):
 
 
 def sig_ccpi(a):
-    """MicroBooNE CC1pi+- (PRD 113 032007). Pion kinematics are pre-FSI
-    (placeholder); the theta_mu_pi < 2.65 phase-space cut is applied in the
-    pre-FSI nu/lepton frame."""
-    p_lep = prefsi3(a, "lep")
-    p_cpi = prefsi3(a, "cpi")
-    pmu = np.linalg.norm(p_lep, axis=1)
-    ppi = np.linalg.norm(p_cpi, axis=1)
+    """MicroBooNE CC1pi+- (PRD 113 032007). Post-FSI muon and leading
+    charged pion (detector frame, beam +z)."""
+    vmu = mom3(a, "true_mu")
+    vpi = mom3(a, "true_cpi")
     with np.errstate(invalid="ignore"):
-        th = np.arccos(opening_cos(p_lep, p_cpi))
+        th = np.arccos(opening_cos(vmu, vpi))
     return (
         (a["true_isnc"] == 0) & (a["true_pdg"] == 14)
         & (a["nu_E"] > 0)
         & (a["true_npi"] == 1) & (a["true_npi0"] == 0)
-        & valid(a["genie_prefsi_lep_pz"], a["genie_prefsi_cpi_pz"])
-        & (pmu > 0.15) & (ppi > 0.10) & (th < 2.65)
+        & valid(a["true_mu_dir_z"], a["true_cpi_p"], a["true_cpi_dir_z"])
+        & (a["true_mu_p"] > 0.15) & (a["true_cpi_p"] > 0.10) & (th < 2.65)
     )
 
 
 def sig_t2k_nc1pi(a):
-    """T2K ND280 NC1pi (PRL 135 171803). NC, exactly one charged pion;
-    pion kinematics are pre-FSI (placeholder). The measured region cut in
+    """T2K ND280 NC1pi (PRL 135 171803). NC, exactly one charged pion,
+    post-FSI pion kinematics. The measured region cut in
     (p_pi, cos_theta_pi) is applied by the weight table itself."""
     return (
         (a["true_isnc"] == 1)
         & (a["true_npi"] == 1) & (a["true_npi0"] == 0)
-        & valid(a["genie_prefsi_cpi_pz"])
+        & valid(a["true_cpi_p"], a["true_cpi_dir_z"])
     )

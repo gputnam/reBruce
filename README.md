@@ -11,7 +11,7 @@ file, one scalar `double` branch per calculator (and per W-mode).
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
-./venv/bin/python -m pytest tests/          # 18 unit tests
+./venv/bin/python -m pytest tests/          # unit tests
 ```
 
 No external python installs, ROOT, GENIE, or NUISANCE are needed at runtime.
@@ -68,7 +68,7 @@ rate unchanged). Options: `normalize: per-file | none | fixed` (+
 `norm_scale`).
 
 ### `qe_zexp_mva_to_lqcd` -> branch `wgt_qe_zexp_mva_to_lqcd`
-Reweights the axial form factor of numu CC QE events from the MINERvA
+Reweights the axial form factor of numu and numubar CC QE events from the MINERvA
 measurement (Nature 614 (2023) 48, z-expansion a1..a4 = {1.50, -1.2, -0.1,
 0.2}, T0 = -0.75) to the LQCD average (a1..a2 = {1.721, -0.31}, T0 = -0.5,
 Tcut = 0.161604), as defined by the GENIE tunes AR23_20i_01_001 and
@@ -83,12 +83,17 @@ BBA07 vector form factors), evaluated at the event's true kinematics with
 only the axial form factor swapped -- NOT an FA^2 ratio, which would ignore
 the interference of FA with the other form factors and the RPA structure.
 The per-event kinematics (struck-nucleon momentum, binding) are
-reconstructed from `genie_Enu`, `genie_prefsi_lep_*` and
-`genie_prefsi_p_*`; the unstored hit-nucleon radius is marginalized over
-the vertex distribution (see MISSING_INFO.md). The port is validated
-event-by-event against the GENIE-computed `ZExpPCAWeighter_SBN_v3_MvA`
-dial weights stored in the sBruce multisigmaTree: agreement at all 24
-sigma points to mean 1.0000, RMS <= 0.2% (`validation/validate_nieves.py`).
+reconstructed from `genie_Enu`, `genie_prefsi_lep_*` and the pre-FSI recoil
+nucleon (`genie_prefsi_p_*` for neutrinos, `genie_prefsi_n_*` for
+antineutrinos, sBruce schema >= 20); the unstored hit-nucleon radius is
+marginalized over the vertex distribution (see MISSING_INFO.md). The port
+is validated event-by-event against the GENIE-computed
+`ZExpPCAWeighter_SBN_v3_MvA` dial weights stored in the sBruce
+multisigmaTree: for neutrinos, agreement at all 24 sigma points to mean
+1.0000, RMS <= 0.2% (`validation/validate_nieves.py`); for antineutrinos
+the bulk agrees to ~2%, with rare high-Q2 outliers where the Valencia RPA
+tensor crosses zero and the missing radius genuinely matters
+(MISSING_INFO.md).
 
 Option `ga_convention: tune` (default; each coefficient set uses its own
 FA(0)) or `nusyst` (both use the AR23 CV FA(0) = -1.2670, the
@@ -115,9 +120,10 @@ repository has no dependency on those inputs.
 | `t2k_nc1pi` | T2K ND280 NC1pi, PRL 135 171803 | `p_costh` (2D, only option) | -- |
 
 Signal definitions mirror the papers/NUISANCE, computed from post-FSI truth
-(`true_mu_*`, `true_p_*`, `true_p2_*`, counts `true_np/true_npi/true_npi0`);
-pion kinematics come from the pre-FSI record as a placeholder (see
-MISSING_INFO.md). TKI variable formulas are in `fakedata/tki.py`.
+(`true_mu_*`, `true_p_*`, `true_p2_*`, `true_cpi_*` [sBruce schema >= 20],
+counts `true_np/true_npi/true_npi0`); the pion's charge is not stored, so
+either charge is accepted (see MISSING_INFO.md). TKI variable formulas are
+in `fakedata/tki.py`.
 
 **W modes** (`w_modes: [nominal, loW, midW, hiW]`): in mode X the events in
 the relevant cvwgt-weighted equal-population tercile of the `genie_W`
@@ -200,8 +206,10 @@ MISSING_INFO.md        sBruce information gaps and the placeholders used
 
 ## Known approximations
 
-See MISSING_INFO.md for the full list with regeneration recommendations:
-pre-FSI block coverage (~10% on SBND CV files), missing post-FSI pion
-kinematics (pre-FSI proxy used), missing hit-nucleon radius (marginalized),
-signal-definition thresholds assumed equal to the `true_n*` count
-definitions, and no antineutrino QE reweight (no pre-FSI neutron stored).
+The tool targets sBruce schema 20 (schema 19 lacked pre-FSI neutrons,
+post-FSI pion kinematics, and full pre-FSI-block coverage on SBND). See
+MISSING_INFO.md for the remaining gaps with regeneration recommendations:
+missing hit-nucleon radius (marginalized; matters only for rare
+antineutrino high-Q2 events), missing pion charge, signal-definition
+thresholds assumed equal to the `true_n*` count definitions, and
+CV-normalized stored multisigma weights.

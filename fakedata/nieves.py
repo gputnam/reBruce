@@ -485,11 +485,20 @@ class NievesQEXSec:
         return tensors, common, valid
 
     def weight_ratio(self, enu, p_lep, p_nf, fa_new, fa_old, is_neutrino=True):
-        """Posterior-averaged xsec ratio new/old; 1.0 where undefined."""
+        """Posterior-averaged xsec ratio new/old; 1.0 where undefined.
+
+        The RPA-corrected tensor can go negative at high Q2 and small radius
+        (a known Valencia-model pathology, present in GENIE as well, mostly
+        for antineutrinos); the ratio is kept as long as it is finite and
+        positive -- GENIE forms the same ratio from its (possibly negative)
+        cross sections. A non-positive or non-finite ratio falls back to 1.
+        """
         tensors, common, _ = self.tensor_parts(
             enu, p_lep, p_nf, {"new": fa_new, "old": fa_old}, is_neutrino)
         prior = self.r_prior[None, :] * common               # (N, R)
         num = np.sum(prior * tensors["new"], axis=1)
         den = np.sum(prior * tensors["old"], axis=1)
-        good = (den > 0) & (num >= 0)
-        return np.where(good, num / np.where(good, den, 1.0), 1.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            w = num / den
+        good = np.isfinite(w) & (w > 0)
+        return np.where(good, w, 1.0)

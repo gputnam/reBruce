@@ -18,10 +18,12 @@ Coefficient-set conventions (config option ga_convention):
   - "nusyst": both sets use the AR23 CV FA(0) = -1.2670, matching the
     nusystematics ZExpPCAWeighter convention (which dials only a1..a4/T0).
 
-Domain: numu CC QE (genie_mode == 0, true_isnc == 0, true_pdg == 14) with
-valid genie_prefsi_lep and genie_prefsi_p momenta. Weight = 1 elsewhere.
-Antineutrinos are NOT reweighted (the pre-FSI record stores no recoil
-neutron; see MISSING_INFO.md).
+Domain: numu/numubar CC QE (genie_mode == 0, true_isnc == 0,
+true_pdg == +-14) with valid genie_prefsi_lep momenta and a valid pre-FSI
+recoil nucleon: genie_prefsi_p (leading proton) for neutrinos,
+genie_prefsi_n (leading neutron, sBruce schema >= 20) for antineutrinos.
+Weight = 1 elsewhere (including QE-like events with no stored recoil
+nucleon, e.g. associated strangeness production).
 
 The Nieves port is validated event-by-event against the GENIE-computed
 ZExpPCAWeighter_SBN_v3_MvA b-dial weights in the sBruce multisigmaTree
@@ -44,32 +46,39 @@ QE_BRANCHES = [
     "genie_Enu",
     "genie_prefsi_lep_px", "genie_prefsi_lep_py", "genie_prefsi_lep_pz",
     "genie_prefsi_p_px", "genie_prefsi_p_py", "genie_prefsi_p_pz",
+    "genie_prefsi_n_px", "genie_prefsi_n_py", "genie_prefsi_n_pz",
 ]
 
+# recoil-nucleon pre-FSI species per probe: nu n -> mu- p, nubar p -> mu+ n
+_RECOIL = {14: "p", -14: "n"}
 
-def qe_numu_prefsi_mask(a):
-    """numu CC QE events with the pre-FSI kinematics needed for Nieves."""
+
+def qe_numu_prefsi_mask(a, nu_pdg=14):
+    """CC QE events (probe nu_pdg) with the pre-FSI kinematics for Nieves."""
+    rec = _RECOIL[nu_pdg]
     return (
         (a["genie_mode"] == MODE_QE)
         & (a["true_isnc"] == 0)
-        & (a["true_pdg"] == 14)
+        & (a["true_pdg"] == nu_pdg)
         & valid(
             a["genie_Enu"],
             a["genie_prefsi_lep_py"], a["genie_prefsi_lep_pz"],
-            a["genie_prefsi_p_px"], a["genie_prefsi_p_py"], a["genie_prefsi_p_pz"],
+            a[f"genie_prefsi_{rec}_px"], a[f"genie_prefsi_{rec}_py"],
+            a[f"genie_prefsi_{rec}_pz"],
         )
     )
 
 
-def qe_kinematics(a, mask):
+def qe_kinematics(a, mask, nu_pdg=14):
     """(enu, p_lep, p_nf) float64 arrays for masked events."""
+    rec = _RECOIL[nu_pdg]
     enu = a["genie_Enu"][mask].astype(np.float64)
     p_lep = np.stack(
         [a["genie_prefsi_lep_px"][mask], a["genie_prefsi_lep_py"][mask],
          a["genie_prefsi_lep_pz"][mask]], axis=1).astype(np.float64)
     p_nf = np.stack(
-        [a["genie_prefsi_p_px"][mask], a["genie_prefsi_p_py"][mask],
-         a["genie_prefsi_p_pz"][mask]], axis=1).astype(np.float64)
+        [a[f"genie_prefsi_{rec}_px"][mask], a[f"genie_prefsi_{rec}_py"][mask],
+         a[f"genie_prefsi_{rec}_pz"][mask]], axis=1).astype(np.float64)
     return enu, p_lep, p_nf
 
 
@@ -85,18 +94,20 @@ def _ff(set_name, ga_convention):
 def deut_to_minerva_weight(sbruce, xsec=None):
     """Per-event deuterium->MINERvA CV Nieves weight (nusystematics
     convention: gA fixed at the AR23 CV, T0 -> -0.75). Weight = 1 outside
-    the numu CC QE domain. Used by the divide-out-form-factor option of the
-    cross-section-measurement calculators."""
+    the numu/numubar CC QE domain. Used by the divide-out-form-factor
+    option of the cross-section-measurement calculators."""
     a = sbruce.arrays(QE_BRANCHES)
-    mask = qe_numu_prefsi_mask(a)
     w = np.ones(sbruce.n_entries, dtype=np.float64)
-    if not np.any(mask):
-        return w
     xsec = xsec or NievesQEXSec()
     fa_deut = _ff("deuterium", "nusyst")
     fa_mva = _ff("minerva_nature", "nusyst")
-    enu, p_lep, p_nf = qe_kinematics(a, mask)
-    w[mask] = xsec.weight_ratio(enu, p_lep, p_nf, fa_mva, fa_deut)
+    for nu_pdg in (14, -14):
+        mask = qe_numu_prefsi_mask(a, nu_pdg)
+        if not np.any(mask):
+            continue
+        enu, p_lep, p_nf = qe_kinematics(a, mask, nu_pdg)
+        w[mask] = xsec.weight_ratio(enu, p_lep, p_nf, fa_mva, fa_deut,
+                                    is_neutrino=(nu_pdg > 0))
     return w
 
 
@@ -111,15 +122,16 @@ class QEZexpMvaToLQCD(Calculator):
     def compute(self, sbruce):
         a = sbruce.arrays(QE_BRANCHES)
         n = sbruce.n_entries
-        mask = qe_numu_prefsi_mask(a)
-        self.report_coverage(self.branch, mask, n)
 
         weights = self.ones(n)
-        if not np.any(mask):
-            return {self.branch: weights}
-
         fa_old = _ff("minerva_nature", self.ga_convention)
         fa_new = _ff("lqcd", self.ga_convention)
-        enu, p_lep, p_nf = qe_kinematics(a, mask)
-        weights[mask] = self.xsec.weight_ratio(enu, p_lep, p_nf, fa_new, fa_old)
+        for nu_pdg in (14, -14):
+            mask = qe_numu_prefsi_mask(a, nu_pdg)
+            self.report_coverage(f"{self.branch} nu_pdg={nu_pdg}", mask, n)
+            if not np.any(mask):
+                continue
+            enu, p_lep, p_nf = qe_kinematics(a, mask, nu_pdg)
+            weights[mask] = self.xsec.weight_ratio(
+                enu, p_lep, p_nf, fa_new, fa_old, is_neutrino=(nu_pdg > 0))
         return {self.branch: weights}
