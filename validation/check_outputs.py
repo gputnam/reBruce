@@ -25,7 +25,8 @@ from fakedata.tercile import WEIGHT_CLIP   # noqa: E402
 
 XSEC_CALCS = ["wgt_ub_cc1p0pi_dpt_dat", "wgt_ub_cc2p0pi_delta_pt",
               "wgt_ub_ccpi_pionmomentum", "wgt_t2k_nc1pi_p_costh"]
-ALL_CALCS = ["wgt_mec_bdt", "wgt_qe_zexp_mva_to_lqcd"] + XSEC_CALCS
+ALL_CALCS = ["wgt_mec_bdt", "wgt_qe_zexp_mva_to_lqcd",
+             "wgt_pi_fsi_ha2025"] + XSEC_CALCS
 
 
 def check_file(fn, tol_clip=1e-3):

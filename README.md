@@ -99,6 +99,20 @@ Option `ga_convention: tune` (default; each coefficient set uses its own
 FA(0)) or `nusyst` (both use the AR23 CV FA(0) = -1.2670, the
 nusystematics ZExpPCAWeighter convention).
 
+### `pi_fsi_ha2025` -> branch `wgt_pi_fsi_ha2025`
+Reweights the INTRANUKE pion FSI fate fractions from hA2018 to hA2025:
+`w = frac_hA2025 / frac_hA2018` for the FSI fate of the event's leading
+pre-FSI charged pion (cex / abs / inel / pipro from `genie_prefsi_cpi_fsi`,
+with absorption identified as INELAS + no surviving charged pion), at the
+pion's pre-FSI kinetic energy on Ar (A = 40). Elastic / non-interacting
+pions and pion-less events get weight 1. The fate-fraction information is
+extracted from the `hA_TGraphs_2D/` ROOT TGraph2D files into
+`data/ha_pion_fsi_weights_A40.csv` by `scripts/extract_ha_tgraphs.py`
+using ROOT's own `TGraph2D::Interpolate` (the binary ROOT files stay out
+of the repository); validated off-grid against the reference reweighter to
+a mean |dw| ~ 6e-4 (up to ~1.6% locally at the steep pipro turn-on near
+KE = 350 MeV).
+
 ### Cross-section-measurement calculators
 `ub_cc1p0pi`, `ub_cc2p0pi`, `ub_ccpi`, `t2k_nc1pi` -> branches
 `wgt_<calc>_<variable>[_loW|_midW|_hiW]`

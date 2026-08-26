@@ -5,6 +5,7 @@ output_dir: output
 calculators:
   - type: mec_bdt
   - type: qe_zexp_mva_to_lqcd
+  - type: pi_fsi_ha2025
   - type: ub_cc1p0pi          # default variable: dpt_dat (2D DeltaAlphaT x DeltaPT)
   - type: ub_cc2p0pi          # default variable: delta_PT
   - type: ub_ccpi             # default variable: PionMomentum

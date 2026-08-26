@@ -251,3 +251,33 @@ def test_ws_density_normalized():
     rho = ws_density(r, 40)
     integral = np.trapezoid(4 * np.pi * rho * r ** 2, r)
     assert abs(integral - 1.0) < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# hA2018 -> hA2025 pion FSI reweight
+# ---------------------------------------------------------------------------
+
+def test_ha2025_table_values():
+    from fakedata.ha2025 import HA2025Reweighter, FATES
+    rw = HA2025Reweighter()
+    # first table row: KE=1 MeV, cex -> 0.4651438869139974 (from the CSV)
+    w = rw.weight(np.array([1.0]), np.array([FATES.index("cex")]))
+    assert abs(w[0] - 0.4651438869139974) < 1e-12
+    # unmapped fate index -> exactly 1
+    w = rw.weight(np.array([100.0, 500.0]), np.array([-1, -1]))
+    assert np.all(w == 1.0)
+    # clamping: below/above the table range uses the endpoints
+    for f in range(4):
+        lo = rw.weight(np.array([0.0]), np.array([f]))
+        lo1 = rw.weight(np.array([1.0]), np.array([f]))
+        assert lo[0] == lo1[0]
+
+
+def test_ha2025_weights_reasonable():
+    from fakedata.ha2025 import HA2025Reweighter
+    rw = HA2025Reweighter()
+    ke = np.linspace(1, 999, 500)
+    for f in range(4):
+        w = rw.weight(ke, np.full(500, f))
+        assert np.all(np.isfinite(w))
+        assert np.all(w >= 0)

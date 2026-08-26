@@ -1,5 +1,6 @@
 venv/
 output/
+hA_TGraphs_2D/*.root
 __pycache__/
 *.pyc
 .pytest_cache/
