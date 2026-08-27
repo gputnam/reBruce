@@ -34,7 +34,20 @@ in multisigmaTree (`validation/validate_nieves.py`):
 counts |pdg| == 211. The T2K measurement is NC1pi+ only; the calculator
 accepts either charge. **Regeneration**: add a `true_cpi_pdg` branch.
 
-### 3. Signal-definition thresholds vs. the true_n* counts
+### 3. Pre-FSI particle multiplicities
+
+Only the *leading* pre-FSI particle of each species is stored
+(`genie_prefsi_{cpi,pi0,g,p,p2,n,n2}_*`); there are no pre-FSI counts. The
+`jaesung_lowq2_pi_enhancement` `_prefsi` branch therefore cannot apply the
+reference's `nPip == 1` requirement and accepts any event with a leading
+pre-FSI charged pion, no pre-FSI pi0 and no pre-FSI photon above 10 MeV.
+**Per user direction** this leading-particle proxy is used as-is. Note the pi0
+and photon vetoes *are* exact -- the stored particle is the leading one by
+energy, so "the leading photon is above 10 MeV" is equivalent to "some photon
+is above 10 MeV"; only the multiplicity requirement is approximated.
+**Regeneration**: pre-FSI per-species counts (`genie_prefsi_ncpi`, ...).
+
+### 4. Signal-definition thresholds vs. the true_n* counts
 
 The measurements count particles in phase-space windows (protons 0.3-1.0
 GeV/c; pi+- vetoes at 65/70 MeV/c; "no other mesons"). sBruce stores only
@@ -46,7 +59,7 @@ whose kinematics are stored (mu, p, p2, cpi). Kaon/other-meson vetoes
 reduce to the pi0 veto. **Regeneration**: thresholded counts or a small
 per-particle FS table would make the definitions exact.
 
-### 4. Stored ZExp multisigma weights are CV-normalized
+### 5. Stored ZExp multisigma weights are CV-normalized
 
 `multisigma_ZExpPCAWeighter_SBN_v3_MvA_b*` sigma=0 entries are identically
 1.0: the deuterium->MINERvA CV weight was divided out in production. The
@@ -55,7 +68,7 @@ Nieves port rather than reading a stored branch. **Regeneration**: if the
 CV weight is applied to `cvwgt` in future productions, also store it as its
 own branch.
 
-### 5. Duplicate/ambiguous truth blocks (no action needed)
+### 6. Duplicate/ambiguous truth blocks (no action needed)
 
 `true_genie_mode` (int16, -1 sentinel) vs `genie_mode` (float, -999);
 `nu_E` vs `true_E` vs `genie_Enu`. The reweighter uses `genie_mode` for

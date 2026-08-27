@@ -43,6 +43,10 @@ GENIE event-record (pre-FSI) kinematics [GeV], -999 when unfilled:
                                   n   = leading neutron   (status 14;
                                         sBruce schema >= 20, used for the
                                         antineutrino QE reweight)
+    genie_prefsi_{cpi,pi0,g}_{px,py,pz}
+                                pre-FSI leading charged pion / pi0 / photon
+                                3-momenta in the same frame
+    genie_prefsi_cpi_fsi        INTRANUKE rescatter code of the pre-FSI pion
 
 Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
     true_mu_p,  true_mu_dir_{x,y,z}     true muon momentum and direction
@@ -50,6 +54,8 @@ Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
     true_p2_p,  true_p2_dir_{x,y,z}     subleading true proton
     true_cpi_p, true_cpi_dir_{x,y,z}    leading true charged pion
                                         (sBruce schema >= 20)
+    true_g_p                            leading true photon momentum (= energy;
+                                        SPP photon veto)
     true_np, true_npi, true_npi0        final-state particle counts
 
 Friend tree multisigmaTree (OPTIONAL -- used when present):

@@ -25,8 +25,22 @@ from fakedata.tercile import WEIGHT_CLIP   # noqa: E402
 
 XSEC_CALCS = ["wgt_ub_cc1p0pi_dpt_dat", "wgt_ub_cc2p0pi_delta_pt",
               "wgt_ub_ccpi_pionmomentum", "wgt_t2k_nc1pi_p_costh"]
+# nominal-only calculators (no _loW/_midW/_hiW branches, so they are not in
+# XSEC_CALCS, which drives the W-mode closure check)
 ALL_CALCS = ["wgt_mec_bdt", "wgt_qe_zexp_mva_to_lqcd",
-             "wgt_pi_fsi_ha2025"] + XSEC_CALCS
+             "wgt_pi_fsi_ha2025",
+             "wgt_jaesung_lowq2_pi_enhancement_postfsi",
+             "wgt_jaesung_lowq2_pi_enhancement_prefsi",
+             ] + XSEC_CALCS
+
+
+def _short(branch):
+    """5-char column label for the coverage table."""
+    parts = branch.split("_")
+    # branches that differ only in their last part are labelled by it
+    return (parts[-1][:5]
+            if parts[-1] in ("postfsi", "prefsi")
+            else parts[1][:4])
 
 
 def check_file(fn, tol_clip=1e-3):
@@ -69,7 +83,7 @@ def main(pattern="output/*_fakedata.root"):
         print(f"no files match {pattern}")
         return 1
     print(f"{'file':44s} {'evts':>6} " +
-          " ".join(f"{b.split('_')[1][:4]:>5}" for b in ALL_CALCS) +
+          " ".join(f"{_short(b):>5}" for b in ALL_CALCS) +
           f" {'clip':>5} {'resid':>8}  status")
     n_bad = 0
     for fn in files:

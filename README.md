@@ -32,6 +32,7 @@ output_dir: output          # used if --output/output not given
 calculators:
   - type: mec_bdt
   - type: qe_zexp_mva_to_lqcd
+  - type: jaesung_lowq2_pi_enhancement       # 2 branches: _postfsi + _prefsi
   - type: ub_cc1p0pi
     variable: dpt_dat                       # default; any CSV observable works
     w_modes: [nominal, loW, midW, hiW]      # default: all four
@@ -112,6 +113,54 @@ using ROOT's own `TGraph2D::Interpolate` (the binary ROOT files stay out
 of the repository); validated off-grid against the reference reweighter to
 a mean |dw| ~ 6e-4 (up to ~1.6% locally at the steep pipro turn-on near
 KE = 350 MeV).
+
+### `jaesung_lowq2_pi_enhancement` -> branches `wgt_jaesung_lowq2_pi_enhancement_{postfsi,prefsi}`
+The single-pion-production (SPP) central-value correction from the ICARUS NuMI
+numu cross-section analysis (J. Kim), ported from
+[`sbnana/SBNAna/Cuts/NuMIXSecSysts.cxx`][NuMIXSecSysts]: for events passing the
+`IsSPP` definition (L14-L81), the low-`Q^2` SPP enhancement template
+`GetSPPQ2Reweight` (L94-L118, 1.25 - 1.73, peaking at `Q^2 ~ 0.075 GeV^2`) times
+the MINERvA untracked-pion `T_pi` suppression `GetSPPTpiMINERvAFittedReweight`
+(L241-L265, a Landau fit below `T_pi = 225 MeV`, a binned template above). Their
+product is `kTruth_NuMISPPCVCorrection`. The branch holds that correction
+itself (AR23 -> corrected model), **not** the `1/CVCorr` "back to nominal"
+orientation the `ISyst::Shift` methods in that file use. `Q^2` is
+`genie_q3^2 - genie_q0^2` (there is no `genie_Q2` branch); events without it,
+and all events outside the SPP definition, get weight 1.
+
+**Two branches**, differing only in where the signal definition and the leading
+pion's kinetic energy come from:
+
+| branch | signal definition | `T_pi` |
+|---|---|---|
+| `_postfsi` | final state: `true_npi == 1`, `true_npi0 == 0`, no `true_g_p` above 10 MeV | `true_cpi_p` |
+| `_prefsi` | initial state: a pre-FSI charged pion, no pre-FSI `pi0`, no pre-FSI photon above 10 MeV | `\|genie_prefsi_cpi_p\|` |
+
+The reference's `IsSPP` loops over the G4 primary list, so `_postfsi` is its
+direct analogue; `_prefsi` moves the same correction onto the GENIE event
+record, and the difference between the two branches is the FSI sensitivity of
+the correction. The pre-FSI signal is the wider of the two (13.4% vs 10.1% of
+events on `SBNDMCCV_12`, since FSI absorbs pions); the two weights differ on
+~10% of all events. The product stays within `[0.39, 2.10]`, so `WEIGHT_CLIP`
+never engages.
+
+The `pi0` and photon vetoes are **exact**: the stored particle is the leading
+one by energy, so "the leading photon is above 10 MeV" is equivalent to "some
+photon is above 10 MeV". Approximations (MISSING_INFO.md): no pion charge is
+stored, so the reference's "exactly one `pi+`" becomes "exactly one charged
+pion of either sign"; the `n_mesons == 1` requirement reduces to the `pi0` veto
+(no kaon/eta information); only the *leading* pre-FSI pion is stored, so
+`_prefsi` cannot veto events with more than one pre-FSI charged pion; and the
+reference's `TargetA == 1` (hydrogen) veto is dropped, the SBN target being
+argon. Following the reference, no CC / numu requirement is imposed -- `IsSPP`
+is a final-state definition only.
+
+`TMath::Landau` is reproduced by `fakedata/landau.py`, a numpy port of ROOT's
+`ROOT::Math::landau_pdf` (CERNLIB G110 `denlan`), validated in the tests
+against the Landau integral representation
+`p(z) = 1/pi * int_0^inf exp(-u ln u - z u) sin(pi u) du` to a relative 1e-6.
+
+[NuMIXSecSysts]: https://github.com/jedori0228/sbnana/blob/feature/jskim_NuMINumuXSec_v09_93_01_TrackSplitSystShiftTest_TestSaveOneTrack/sbnana/SBNAna/Cuts/NuMIXSecSysts.cxx#L14-L81
 
 ### Cross-section-measurement calculators
 `ub_cc1p0pi`, `ub_cc2p0pi`, `ub_ccpi`, `t2k_nc1pi` -> branches
