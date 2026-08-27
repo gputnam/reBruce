@@ -7,6 +7,7 @@
 | `ub_cc2p0pi_xsec.csv` | MicroBooNE CC1mu2p0pi xsec / AR23 weights, PLB 872 140052 (2026) | built by `fake-data-studies/build_ub_cc2p0pi_reweight.py` |
 | `ub_ccpi_xsec.csv` | MicroBooNE CC1pi+- xsec / AR23 weights, PRD 113 032007 (2026) | built by `fake-data-studies/build_ub_ccpi_reweight.py` |
 | `t2k_nc1pi_xsec.csv` | T2K ND280 NC1pi+ xsec / AR23 weights, PRL 135 171803 (2025) | built by `fake-data-studies/build_t2k_nc1pi_reweight.py`; sigma_ar23 digitized from Fig. 3 of the paper |
+| `minerva_3dqelike_bnb.csv` | MINERvA LE/ME 3D QE-like (p_z, p_T, SumT_p) xsec / AR23 weights, extrapolated per bin to the BNB flux peak, arXiv:2606.00745 | built by `scripts/build_minerva_3dqelike_table.py` from the standalone `MvA_LE_ME/` analysis (`results/weights_ptpzsumtp.csv` + `weights_meta.json`) |
 | `ha_pion_fsi_weights_A40.csv` | hA2018->hA2025 pi+ FSI fate-fraction weights vs KE at A=40 (runtime table for `pi_fsi_ha2025`) | tabulated from `hA_TGraphs_2D/TGraphs_{2018,2025}.root` with ROOT TGraph2D::Interpolate by `scripts/extract_ha_tgraphs.py` |
 | `ha_pion_fsi_tgraphs.csv` | raw TGraph2D points of the above (archival provenance) | same extraction script |
 

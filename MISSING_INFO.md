@@ -59,7 +59,33 @@ whose kinematics are stored (mu, p, p2, cpi). Kaon/other-meson vetoes
 reduce to the pi0 veto. **Regeneration**: thresholded counts or a small
 per-particle FS table would make the definitions exact.
 
-### 5. Stored ZExp multisigma weights are CV-normalized
+### 5. Only the two leading final-state protons are stored
+
+The MINERvA QE-like measurement bins in `SumT_p = sum(E - m_p)` over **all**
+final-state protons, but sBruce stores kinematics for only the leading two
+(`true_p_p`, `true_p2_p`); `true_np` gives the count but not the momenta.
+
+**Placeholder**: `fakedata.tki.sum_tp` sums the two stored protons. Events
+with `true_np > 2` (19% of the in-region population on the ICARUS CV files)
+therefore have `SumT_p` under-counted and migrate to lower `SumT_p` bins --
+which is where the paper's headline discrepancy lives, so the bias is not
+uniform. Per user direction those events are reweighted anyway rather than
+dropped. **Regeneration**: store `SumT_p` directly, or a small per-particle
+final-state table.
+
+### 6. No heavy-baryon / charm veto
+
+The MINERvA QE-like signal definition (NUISANCE `isCC0pi_MINERvAPTPZ`)
+vetoes heavy baryons and charm in the final state. sBruce stores only
+`true_np`, `true_nn`, `true_npi`, `true_npi0` and the leading photon, so
+that part of the definition is not applied; "no other mesons" likewise
+reduces to the pi+-/pi0 vetoes (the same limitation as item 4 above). The
+contamination is small at BNB energies -- strange/charm production is far
+below threshold for most of the flux -- but it is not zero for the DIS tail.
+**Regeneration**: a thresholded final-state species table would make every
+meson/baryon veto exact at once (see item 4).
+
+### 7. Stored ZExp multisigma weights are CV-normalized
 
 `multisigma_ZExpPCAWeighter_SBN_v3_MvA_b*` sigma=0 entries are identically
 1.0: the deuterium->MINERvA CV weight was divided out in production. The
@@ -68,7 +94,7 @@ Nieves port rather than reading a stored branch. **Regeneration**: if the
 CV weight is applied to `cvwgt` in future productions, also store it as its
 own branch.
 
-### 6. Duplicate/ambiguous truth blocks (no action needed)
+### 8. Duplicate/ambiguous truth blocks (no action needed)
 
 `true_genie_mode` (int16, -1 sentinel) vs `genie_mode` (float, -999);
 `nu_E` vs `true_E` vs `genie_Enu`. The reweighter uses `genie_mode` for

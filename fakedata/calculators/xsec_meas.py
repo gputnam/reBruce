@@ -1,10 +1,12 @@
 """Cross-section-measurement reweight calculators: AR23 -> measured xsec.
 
-Four measurements (weight tables in data/, see data/README.md):
+Measurements (weight tables in data/, see data/README.md):
   ub_cc1p0pi : MicroBooNE CC1mu1p0pi   (PRL 131 101802)
   ub_cc2p0pi : MicroBooNE CC1mu2p0pi   (PLB 872 140052)
   ub_ccpi    : MicroBooNE CC1pi+-      (PRD 113 032007)
   t2k_nc1pi  : T2K ND280 NC1pi         (PRL 135 171803)
+and, in its own module (minerva_qelike.py, which subclasses the base here):
+  minerva_3dqelike : MINERvA LE/ME 3D QE-like (arXiv:2606.00745)
 
 Per config entry:
   variable:      reweighting observable (default per calculator; the
@@ -31,7 +33,7 @@ from ..tercile import W_MODES, wmode_weights
 from ..tki import (BE_ECAL, M_MU, M_P, POSTFSI_BRANCHES, POSTFSI_PION_BRANCHES,
                    mom3, opening_cos, sig_cc1p0pi, sig_cc2p0pi,
                    sig_ccpi, sig_t2k_nc1pi, tki_ptx_pty, tki_vars)
-from ..xsec_table import Table1D, TableBins2D, load_t2k_table, load_ub_table
+from ..xsec_table import Table1D, load_t2k_table, load_ub_table
 from .qe_zexp import deut_to_minerva_weight
 
 
@@ -67,7 +69,7 @@ class XSecMeasCalculator(Calculator):
         raise NotImplementedError
 
     def observable(self, a):
-        """Returns (x,) for 1D or (x, y) for 2D observables."""
+        """Returns (x,) for 1D, (x, y) for 2D, (x, y, z) for 3D."""
         raise NotImplementedError
 
     def branches_needed(self):
@@ -82,10 +84,11 @@ class XSecMeasCalculator(Calculator):
         sig = self.signal_mask(a)
         obs = self.observable(a)
         with np.errstate(invalid="ignore"):
-            if isinstance(table, TableBins2D):
-                bin_idx = table.bin_index(*(np.where(sig, o, -1e9) for o in obs))
-            else:
+            if isinstance(table, Table1D):
                 bin_idx = table.bin_index(np.where(sig, obs[0], -1e9))
+            else:
+                # 2D/3D tables take one masked array per observable
+                bin_idx = table.bin_index(*(np.where(sig, o, -1e9) for o in obs))
         bin_idx = np.where(sig, bin_idx, -1)
         in_bin = bin_idx >= 0
         self.report_coverage(self.branch, in_bin, n)

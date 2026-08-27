@@ -33,6 +33,13 @@ M_MU = 0.10565837
 M_P = 0.938272081
 BE_ECAL = 0.04
 
+# MINERvA LE/ME QE-like measurement: effective (flux-peak) neutrino energies
+# of the two NuMI beams and of the BNB, as used by the MvA_LE_ME analysis
+# that produced data/minerva_3dqelike_bnb.csv.
+E_LE_MINERVA = 3.25
+E_ME_MINERVA = 5.85
+E_BNB = 0.70
+
 POSTFSI_BRANCHES = [
     "nu_E", "true_isnc", "true_pdg",
     "true_np", "true_npi", "true_npi0",
@@ -44,6 +51,15 @@ POSTFSI_BRANCHES = [
 # leading charged pion, post-FSI (sBruce schema >= 20)
 POSTFSI_PION_BRANCHES = [
     "true_cpi_p", "true_cpi_dir_x", "true_cpi_dir_y", "true_cpi_dir_z",
+]
+
+# MINERvA QE-like signal: muon, the two stored protons, and the multiplicity
+# counts plus the leading photon used for the meson / photon vetoes.
+MINERVA_QELIKE_BRANCHES = [
+    "true_isnc", "true_pdg",
+    "true_mu_p", "true_mu_dir_x", "true_mu_dir_y", "true_mu_dir_z",
+    "true_p_p", "true_p2_p", "true_np",
+    "true_npi", "true_npi0", "true_g_p",
 ]
 
 
@@ -145,3 +161,65 @@ def sig_t2k_nc1pi(a):
         & (a["true_npi"] == 1) & (a["true_npi0"] == 0)
         & valid(a["true_cpi_p"], a["true_cpi_dir_z"])
     )
+
+
+def sum_tp(a):
+    """SumT_p = Sum(E - M_P) over the final-state protons [GeV].
+
+    sBruce stores only the leading two protons, so events with true_np > 2
+    are under-counted and migrate to lower SumT_p bins (see MISSING_INFO.md).
+    Unfilled proton branches contribute 0, so a 0-proton event gets
+    SumT_p = 0 and lands in the first bin -- which is correct: the MINERvA
+    QE-like signal admits zero-proton final states.
+    """
+    out = np.zeros(len(a["true_p_p"]), dtype=np.float64)
+    for prefix in ("true_p_p", "true_p2_p"):
+        p = np.where(valid(a[prefix]), a[prefix], 0.0)
+        out += np.sqrt(p ** 2 + M_P ** 2) - M_P
+    return out
+
+
+def minerva_pz_pt(a, pz_scale):
+    """Muon (p_z, p_T) mapped into the MINERvA measurement frame [GeV/c].
+
+    The measurement's p_z axis is treated as scaled relative to the neutrino
+    energy rather than as absolute momentum: a measured edge p_z corresponds
+    at BNB to E_BNB * (p_z / E_beam), so an event's measurement-frame
+    longitudinal momentum is p_z / pz_scale with pz_scale = E_BNB / E_beam.
+    p_T is NOT scaled (it is set by the Q^2 scale, not the beam energy).
+    """
+    pz = a["true_mu_p"] * a["true_mu_dir_z"] / pz_scale
+    pt = a["true_mu_p"] * np.hypot(a["true_mu_dir_x"], a["true_mu_dir_y"])
+    return pz, pt
+
+
+def sig_minerva_qelike(a, pz_scale, theta_cut=True):
+    """MINERvA LE/ME 3D QE-like (arXiv:2606.00745), NUISANCE
+    isCC0pi_MINERvAPTPZ: numu CC, theta(mu, nu) < 20 deg, no mesons and no
+    photon above 10 MeV in the final state.
+
+    The theta cut is applied on the SCALED kinematics, i.e. in the same frame
+    the (p_z, p_T, SumT_p) bin lookup happens; the measured-region cut itself
+    is left to the weight table, as in sig_t2k_nc1pi.
+
+    theta_cut=False drops the 20 deg requirement, for the p_z-marginalized
+    weight: once that weight is applied at any p_z, the theta cut is no
+    longer nearly-redundant with the p_z window (which is what made it cheap
+    for the 3D weight) and instead becomes the binding acceptance constraint.
+
+    The measurement additionally vetoes heavy baryons and charm, which sBruce
+    does not record (see MISSING_INFO.md); "no other mesons" reduces to the
+    pi+- / pi0 vetoes for the same reason.
+    """
+    sig = (
+        (a["true_isnc"] == 0) & (a["true_pdg"] == 14)
+        & valid(a["true_mu_p"], a["true_mu_dir_z"])
+        & (a["true_npi"] == 0) & (a["true_npi0"] == 0)
+        & ~(a["true_g_p"] > 0.010)
+    )
+    if not theta_cut:
+        return sig
+    pz, pt = minerva_pz_pt(a, pz_scale)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cos_th = pz / np.hypot(pz, pt)
+    return sig & (cos_th > np.cos(np.radians(20.0)))

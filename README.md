@@ -40,6 +40,8 @@ calculators:
   - type: ub_cc2p0pi      # default variable: delta_PT
   - type: ub_ccpi         # default variable: PionMomentum
   - type: t2k_nc1pi       # single 2D (p_pi, cos_theta_pi) measurement
+  - type: minerva_3dqelike                  # 2 branches: 3D + p_z-marginalized
+    pz_ref: LE                              # default; p_z scaling reference
 ```
 
 The full list of `SelectedEvents` branches the reweighting code assumes is
@@ -209,6 +211,93 @@ been applied to the CV weight, to avoid double-counting the QE form-factor
 change when reweighting to data. (The sBruce multisigmaTree stores only
 CV-normalized dial variations -- the sigma=0 entries are identically 1 --
 so there is no stored branch to divide by; it must be computed.)
+
+### `minerva_3dqelike` -> branch `wgt_minerva_3dqelike_bnb`
+Reweights numu CC QE-like events from AR23 to the MINERvA triple-differential
+QE-like measurement (D. Ruterbories *et al.*, [arXiv:2606.00745], d3sigma /
+dp_z dp_T dSumT_p on hydrocarbon, LE and ME NuMI beams), after a per-bin
+**linear extrapolation in effective neutrino energy to the BNB flux peak**:
+
+    w_BNB = 1.9808 * w_LE - 0.9808 * w_ME,   clipped to [0, 10]
+
+with each beam treated as a point at its flux peak (E_LE = 3.25 GeV,
+E_ME = 5.85 GeV, E_BNB = 0.7 GeV). The derivation -- fluxes, the GENIE
+v3_06_00 / AR23_20i_00_000 prediction, per-CH-nucleon normalization, and
+plots -- is the standalone `MvA_LE_ME/` analysis; its 450-bin result is
+copied into `data/minerva_3dqelike_bnb.csv` by
+`scripts/build_minerva_3dqelike_table.py` so this repository stays
+self-contained.
+
+**The p_z axis is scaled relative to the neutrino energy**, not treated as
+absolute momentum. A measured edge `p_z` corresponds at BNB to
+`E_BNB * (p_z / E_LE)`, so an event's measurement-frame longitudinal
+momentum is `p_z / pz_scale` with `pz_scale = E_BNB / E_LE = 0.2154`. This
+matters: taken literally the measured window 1.5 <= p_z < 4.5 GeV/c is
+essentially empty at BNB energies (0 of 15203 events in `SBNDMCCV_0`, 25 of
+32650 in `ICARUSRun4_rewgt_0`) and the calculator would be a no-op; with the
+scaling those edges map to 0.323 - 0.969 GeV/c, the bulk of the BNB muon
+spectrum, and 28% (ICARUS) / 18% (SBND) of events by cvwgt are reweighted.
+`pz_ref: LE` (default) | `ME` | `none`; `none` (scale 1.0) reproduces the
+literal published binning and is for reference only.
+
+**p_T and SumT_p are NOT scaled.** p_T is set by the Q^2 scale and SumT_p is
+hadronic recoil energy; neither tracks E_nu the way the longitudinal boost
+does, and both already populate the measured bins with ~0% overflow
+(scaling them would push 86% / 41% of in-range events past the last edge).
+
+Signal (NUISANCE `isCC0pi_MINERvAPTPZ`): numu CC; no mesons; no photon above
+10 MeV; theta(mu, nu) < 20 deg applied on the **scaled** kinematics, i.e. in
+the same frame as the bin lookup (it is nearly redundant with the (p_z, p_T)
+binning there -- 51 of 10009 in-range ICARUS events). `SumT_p = sum(E - m_p)`
+over the stored protons; sBruce keeps only the leading two, so events with
+`true_np > 2` (19% in region) are under-counted, and the heavy-baryon/charm
+veto cannot be applied (both in MISSING_INFO.md).
+
+**Two branches are produced.** `wgt_minerva_3dqelike_bnb` is the 3D lookup
+above. `wgt_minerva_3dqelike_bnb_pzmarg` **marginalizes the measurement over
+p_z** and applies the result to every signal event in a (p_T, SumT_p) cell
+*regardless of its p_z*, and **also drops the theta(mu, nu) < 20 deg cut**:
+for each cell the five p_z bins are averaged with the cvwgt-weighted p_z
+spectrum **of the input file itself**,
+
+    w_marg(j,k) = sum_i N_ijk * w_ijk / sum_i N_ijk
+
+with `N_ijk` the cvwgt sum of that file's signal events in 3D bin (i,j,k).
+Both the spectrum and the events the weight is applied to use the no-theta
+signal, so the two branches have *different* signal populations. Every
+in-p_z-range bin contributes, including the 11 `excluded` bins at their
+conventional 1.0, so the marginalized weight reproduces the 3D lookup's
+total yield in each cell *exactly* over its own population (verified to
+1e-12 in the tests). Cells with no in-p_z-range events in a given file fall
+back to 1.0 -- worth watching on small files, where a third of the 90 cells
+can be empty (the driver prints the count).
+
+The theta cut is dropped only here, and the asymmetry is deliberate: for the
+3D weight it is nearly redundant with the p_z window and costs ~0.2% of
+cvwgt, so it stays; once the weight is applied at any p_z that redundancy
+disappears and theta becomes the binding acceptance constraint. Note this
+lets backward-going muons (p_z < 0) into the marginalized signal, since only
+p_T and SumT_p are then required to be in range.
+
+The marginalized branch exists because the p_z window is what limits the 3D
+branch's reach: it alone costs ~12% of cvwgt, and 63% (ICARUS) / 77% (SBND)
+of the QE-like sample sits below its 0.323 GeV/c floor. Marginalizing buys
+that reach at the price of a stronger assumption -- that the data/AR23
+discrepancy within a (p_T, SumT_p) cell is p_z-independent (which is the
+p_z analogue of the paper's headline energy-independence, but not something
+it measures). Being spectrum-weighted per file, it is **not** a fixed table:
+files with different p_z spectra get slightly different marginalized
+weights. Use one branch or the other, never both at once.
+
+Nominal weight only -- no W-tercile branches. Note that **82 of the 450 bins
+carry weight 0** (their raw extrapolation went negative and was clipped), so
+this fake data kills events outright in those cells; the overall
+cvwgt-weighted mean weight is ~0.90 (ICARUS) / ~0.93 (SBND). The
+extrapolation runs from [3.25, 5.85] GeV down to 0.7 GeV, far outside the
+lever arm: it is a linear trend estimate, not a measurement. The measurement
+is on CH, so applying it to argon assumes the discrepancy transfers.
+
+[arXiv:2606.00745]: https://arxiv.org/abs/2606.00745
 
 ## Weight clip
 

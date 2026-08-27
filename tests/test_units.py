@@ -16,9 +16,13 @@ from fakedata.bba07 import sachs_ffs, MU_P, MU_N                     # noqa: E40
 from fakedata.bdt import GBReweighterJSON                            # noqa: E402
 from fakedata.nieves import NievesQEXSec, ws_density                 # noqa: E402
 from fakedata.tercile import wmode_weights, W_MODES                  # noqa: E402
-from fakedata.tki import tki_vars, tki_ptx_pty                       # noqa: E402
-from fakedata.xsec_table import (Table1D, load_t2k_table,            # noqa: E402
-                                 load_ub_table, ub_observables)
+from fakedata.tki import (E_BNB, E_LE_MINERVA, minerva_pz_pt,        # noqa: E402
+                          sig_minerva_qelike, sum_tp, tki_ptx_pty,
+                          tki_vars)
+from fakedata.xsec_table import (Table1D, TableGrid3D,               # noqa: E402
+                                 load_minerva_3dqelike_table,
+                                 load_t2k_table, load_ub_table,
+                                 ub_observables)
 from fakedata.zexp import COEFF_SETS, ZExpAxialFF                    # noqa: E402
 
 
@@ -283,6 +287,134 @@ def test_ha2025_weights_reasonable():
         assert np.all(w >= 0)
 
 
+# ---------------------------------------------------------------------------
+# MINERvA LE/ME 3D QE-like table and signal definition
+# ---------------------------------------------------------------------------
+
+def _grid_2x2x2():
+    # weights flattened in C order (x slowest, z fastest): index = 4i + 2j + k
+    return TableGrid3D([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [0.0, 1.0, 2.0],
+                       np.arange(8, dtype=float))
+
+
+def test_grid3d_interior_lookup():
+    t = _grid_2x2x2()
+    assert t.n_bins == 8 and t.shape == (2, 2, 2)
+    for (i, j, k) in [(0, 0, 0), (1, 0, 1), (1, 1, 1), (0, 1, 0)]:
+        x = np.array([i + 0.5]), np.array([j + 0.5]), np.array([k + 0.5])
+        assert t.bin_index(*x)[0] == 4 * i + 2 * j + k
+        assert t.weight(*x)[0] == 4 * i + 2 * j + k
+
+
+def test_grid3d_out_of_range_each_axis():
+    t = _grid_2x2x2()
+    mid = np.array([0.5])
+    # below the first edge and at/above the last edge, one axis at a time
+    for lo, hi in [(-0.1, 2.0), (-0.1, 2.5)]:
+        assert t.weight(np.array([lo]), mid, mid)[0] == 1.0
+        assert t.weight(mid, np.array([lo]), mid)[0] == 1.0
+        assert t.weight(mid, mid, np.array([lo]))[0] == 1.0
+        assert t.weight(np.array([hi]), mid, mid)[0] == 1.0
+        assert t.weight(mid, np.array([hi]), mid)[0] == 1.0
+        assert t.weight(mid, mid, np.array([hi]))[0] == 1.0
+    assert t.bin_index(np.array([-1.0]), mid, mid)[0] == -1
+    # the last edge is exclusive, the first inclusive
+    assert t.weight(np.array([0.0]), mid, mid)[0] == 0.0
+
+
+def test_minerva_table_loads():
+    t = load_minerva_3dqelike_table()
+    assert t.shape == (5, 9, 10) and t.n_bins == 450
+    np.testing.assert_allclose(t.x_edges, [1.5, 2.0, 2.5, 3.0, 3.5, 4.5])
+    np.testing.assert_allclose(t.z_edges[-1], 0.799)
+    # spot-check against MvA_LE_ME/results/weights_ptpzsumtp.csv
+    def w(ipz, ipt, itp):
+        return t.weights[(ipz * 9 + ipt) * 10 + itp]
+    assert abs(w(0, 0, 0) - 2.056030984517805) < 1e-12
+    assert w(0, 0, 2) == 0.0                       # clipped from -1.605
+    assert abs(w(0, 1, 8) - 2.01285432734704) < 1e-12
+    assert np.all(t.weights >= 0.0) and np.all(t.weights <= 10.0)
+    assert np.count_nonzero(t.weights == 0.0) == 82
+    assert np.count_nonzero(t.weights == 10.0) == 4
+
+
+def test_minerva_excluded_bins_are_unity():
+    import csv as _csv
+    import os as _os
+    path = _os.path.join(_os.path.dirname(__file__), "..", "data",
+                         "minerva_3dqelike_bnb.csv")
+    with open(path) as f:
+        rows = [r for r in _csv.DictReader(x for x in f
+                                           if not x.startswith("#"))]
+    excluded = [r for r in rows if r["excluded"] == "True"]
+    assert len(excluded) == 11
+    assert all(float(r["weight"]) == 1.0 for r in excluded)
+
+
+def test_minerva_pz_scaling():
+    # p_z is treated relative to the neutrino energy: a measured edge p_z
+    # corresponds at BNB to E_BNB * (p_z / E_LE)
+    scale = E_BNB / E_LE_MINERVA
+    assert abs(scale - 0.21538461538) < 1e-9
+    assert abs(1.5 * scale - 0.32307692) < 1e-7
+    # an event at the scaled first edge lands back on the measured first edge
+    a = {"true_mu_p": np.array([1.5 * scale]),
+         "true_mu_dir_x": np.array([0.0]), "true_mu_dir_y": np.array([0.0]),
+         "true_mu_dir_z": np.array([1.0])}
+    pz, pt = minerva_pz_pt(a, scale)
+    assert abs(pz[0] - 1.5) < 1e-12 and pt[0] == 0.0
+
+
+def test_sum_tp():
+    a = {"true_p_p": np.array([0.5, 0.5, -999.0]),
+         "true_p2_p": np.array([-999.0, 0.5, -999.0])}
+    tp = sum_tp(a)
+    one = np.sqrt(0.5 ** 2 + 0.938272081 ** 2) - 0.938272081
+    assert abs(tp[0] - one) < 1e-12          # unfilled second proton -> 0
+    assert abs(tp[1] - 2 * one) < 1e-12
+    assert tp[2] == 0.0                      # no protons -> first bin
+
+
+def _minerva_event(**over):
+    scale = E_BNB / E_LE_MINERVA
+    ev = {"true_isnc": 0, "true_pdg": 14,
+          "true_mu_p": 0.6, "true_mu_dir_x": 0.0, "true_mu_dir_y": 0.05,
+          "true_mu_dir_z": np.sqrt(1 - 0.05 ** 2),
+          "true_p_p": 0.5, "true_p2_p": -999.0, "true_np": 1,
+          "true_npi": 0, "true_npi0": 0, "true_g_p": -999.0}
+    ev.update(over)
+    return {k: np.array([v], dtype=float) for k, v in ev.items()}, scale
+
+
+def test_sig_minerva_qelike_accepts_signal():
+    a, scale = _minerva_event()
+    assert sig_minerva_qelike(a, scale)[0]
+
+
+@pytest.mark.parametrize("over", [
+    {"true_isnc": 1},                    # NC
+    {"true_pdg": -14},                   # numubar
+    {"true_npi": 1},                     # charged pion
+    {"true_npi0": 1},                    # pi0
+    {"true_g_p": 0.020},                 # photon above 10 MeV
+    {"true_mu_p": -999.0},               # unfilled muon
+    {"true_mu_dir_y": 0.9,               # outside the scaled 20 deg cone
+     "true_mu_dir_z": np.sqrt(1 - 0.9 ** 2), "true_mu_p": 1.5},
+])
+def test_sig_minerva_qelike_rejects(over):
+    a, scale = _minerva_event(**over)
+    assert not sig_minerva_qelike(a, scale)[0]
+
+
+def test_sig_minerva_qelike_keeps_soft_photon():
+    a, scale = _minerva_event(true_g_p=0.005)
+    assert sig_minerva_qelike(a, scale)[0]
+
+
+# ---------------------------------------------------------------------------
+# MINERvA p_z-marginalized weight
+# ---------------------------------------------------------------------------
+
 class _StubSBruce:
     """Minimal SBruceFile stand-in for calculator.compute()-level tests."""
 
@@ -292,6 +424,123 @@ class _StubSBruce:
 
     def arrays(self, branches):
         return {b: self._a[b] for b in branches}
+
+
+def _minerva_sample(rng, n=4000):
+    """Synthetic events spread over the measured (p_z, p_T, SumT_p) region
+    and outside it, in the SCALED frame (so p_z is small at BNB)."""
+    from fakedata.tki import E_BNB, E_LE_MINERVA
+    scale = E_BNB / E_LE_MINERVA
+    pz = rng.uniform(0.1, 1.2, n)               # scaled: 0.323-0.969 measured
+    pt = rng.uniform(0.0, 0.5, n)
+    p = np.hypot(pz, pt)
+    a = {"true_isnc": np.zeros(n), "true_pdg": np.full(n, 14.0),
+         "true_mu_p": p, "true_mu_dir_x": np.zeros(n),
+         "true_mu_dir_y": pt / p, "true_mu_dir_z": pz / p,
+         "true_p_p": rng.uniform(0.0, 0.9, n), "true_p2_p": np.full(n, -999.0),
+         "true_np": np.ones(n), "true_npi": np.zeros(n),
+         "true_npi0": np.zeros(n), "true_g_p": np.full(n, -999.0),
+         "cvwgt": rng.uniform(0.5, 1.5, n), "genie_W": np.full(n, -999.0)}
+    return _StubSBruce(a), scale
+
+
+def test_minerva_marginalized_reproduces_3d_yield_per_cell():
+    """The spectrum-weighted p_z average must preserve, in every
+    (p_T, SumT_p) cell, the total yield the 3D weight lookup would give over
+    this branch's own in-p_z-range population (no-theta signal)."""
+    from fakedata.tki import sig_minerva_qelike
+    from fakedata.calculators.minerva_qelike import MARG_SUFFIX, MINERvA3DQELike
+    calc = MINERvA3DQELike()
+    sb, _ = _minerva_sample(np.random.default_rng(7))
+    wm = calc.compute(sb)[calc.branch + MARG_SUFFIX]
+
+    a = sb.arrays(calc.branches_needed() + ["cvwgt"])
+    cv = a["cvwgt"]
+    table = calc.load_table()
+    sig = sig_minerva_qelike(a, calc.pz_scale, theta_cut=False)
+    obs = calc.observable(a)
+    ipz, ipt, itp = table.axis_indices(*(np.where(sig, o, -1e9) for o in obs))
+    in3d = (ipz >= 0) & (ipt >= 0) & (itp >= 0)
+    assert in3d.sum() > 100, "test sample must populate the measured region"
+    w3d = table.weights.reshape(table.shape)
+
+    for j in range(table.shape[1]):
+        for k in range(table.shape[2]):
+            m = in3d & (ipt == j) & (itp == k)
+            if not m.any():
+                continue
+            lookup = w3d[ipz[m], ipt[m], itp[m]]
+            np.testing.assert_allclose(np.sum(cv[m] * wm[m]),
+                                       np.sum(cv[m] * lookup), rtol=1e-12)
+
+
+def test_minerva_marginalized_drops_theta_cut():
+    """The marginalized branch reaches large-angle muons the 3D branch's
+    theta < 20 deg cut removes; the 3D branch still applies it."""
+    from fakedata.tki import sig_minerva_qelike
+    from fakedata.calculators.minerva_qelike import MARG_SUFFIX, MINERvA3DQELike
+    calc = MINERvA3DQELike()
+    sb, _ = _minerva_sample(np.random.default_rng(3))
+    out = calc.compute(sb)
+    a = sb.arrays(calc.branches_needed() + ["cvwgt"])
+
+    with_th = sig_minerva_qelike(a, calc.pz_scale)
+    no_th = sig_minerva_qelike(a, calc.pz_scale, theta_cut=False)
+    assert np.all(with_th <= no_th)
+    fails_theta = no_th & ~with_th
+    assert fails_theta.sum() > 0, "sample must contain large-angle muons"
+
+    # those events can only ever be weighted by the marginalized branch
+    assert np.all(out[calc.branch][fails_theta] == 1.0)
+    assert np.any(out[calc.branch + MARG_SUFFIX][fails_theta] != 1.0)
+
+
+def test_minerva_marginalized_applies_outside_pz_window():
+    """The marginalized weight is applied at any p_z, so it reaches strictly
+    more events than the 3D weight, and is 1.0 outside the (p_T, SumT_p)
+    measured region."""
+    from fakedata.calculators.minerva_qelike import MARG_SUFFIX, MINERvA3DQELike
+    calc = MINERvA3DQELike()
+    sb, _ = _minerva_sample(np.random.default_rng(11))
+    out = calc.compute(sb)
+    w3, wm = out[calc.branch], out[calc.branch + MARG_SUFFIX]
+
+    from fakedata.tki import sig_minerva_qelike
+    a = sb.arrays(calc.branches_needed() + ["cvwgt"])
+    table = calc.load_table()
+    obs = calc.observable(a)
+    marg_sig = sig_minerva_qelike(a, calc.pz_scale, theta_cut=False)
+    imz, imt, imk = table.axis_indices(
+        *(np.where(marg_sig, o, -1e9) for o in obs))
+    in2d = (imt >= 0) & (imk >= 0)
+    ipz, ipt, itp = table.axis_indices(
+        *(np.where(calc.signal_mask(a), o, -1e9) for o in obs))
+    in3d = (ipz >= 0) & (ipt >= 0) & (itp >= 0)
+
+    assert in2d.sum() > in3d.sum()          # reaches beyond the p_z window
+    assert np.all(wm[~in2d] == 1.0)
+    assert np.all(w3[~in3d] == 1.0)
+    # every weight stays inside the table's own range
+    assert np.all(wm >= 0.0) and np.all(wm <= 10.0)
+
+
+def test_minerva_marginalized_empty_cell_is_unity():
+    """A (p_T, SumT_p) cell with no in-p_z-range events falls back to 1.0."""
+    from fakedata.calculators.minerva_qelike import MARG_SUFFIX, MINERvA3DQELike
+    calc = MINERvA3DQELike()
+    n = 50
+    # all muons well below the scaled p_z window -> no bin has a spectrum
+    p = np.full(n, 0.05)
+    a = {"true_isnc": np.zeros(n), "true_pdg": np.full(n, 14.0),
+         "true_mu_p": p, "true_mu_dir_x": np.zeros(n),
+         "true_mu_dir_y": np.zeros(n), "true_mu_dir_z": np.ones(n),
+         "true_p_p": np.full(n, 0.3), "true_p2_p": np.full(n, -999.0),
+         "true_np": np.ones(n), "true_npi": np.zeros(n),
+         "true_npi0": np.zeros(n), "true_g_p": np.full(n, -999.0),
+         "cvwgt": np.ones(n), "genie_W": np.full(n, -999.0)}
+    out = calc.compute(_StubSBruce(a))
+    assert np.all(out[calc.branch + MARG_SUFFIX] == 1.0)
+    assert np.all(out[calc.branch] == 1.0)
 
 
 # ---------------------------------------------------------------------------

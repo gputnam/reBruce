@@ -31,7 +31,8 @@ ALL_CALCS = ["wgt_mec_bdt", "wgt_qe_zexp_mva_to_lqcd",
              "wgt_pi_fsi_ha2025",
              "wgt_jaesung_lowq2_pi_enhancement_postfsi",
              "wgt_jaesung_lowq2_pi_enhancement_prefsi",
-             ] + XSEC_CALCS
+             ] + XSEC_CALCS + ["wgt_minerva_3dqelike_bnb",
+                            "wgt_minerva_3dqelike_bnb_pzmarg"]
 
 
 def _short(branch):
@@ -39,7 +40,7 @@ def _short(branch):
     parts = branch.split("_")
     # branches that differ only in their last part are labelled by it
     return (parts[-1][:5]
-            if parts[-1] in ("postfsi", "prefsi")
+            if parts[-1] in ("pzmarg", "bnb", "postfsi", "prefsi")
             else parts[1][:4])
 
 

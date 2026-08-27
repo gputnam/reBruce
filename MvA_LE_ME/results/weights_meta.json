@@ -1,0 +1,30 @@
+{
+  "E_LE": 3.25,
+  "E_ME": 5.85,
+  "E_BNB": 0.7,
+  "coeff_LE": 1.9807692307692308,
+  "coeff_ME": -0.9807692307692308,
+  "weight_clip": [
+    0.0,
+    10.0
+  ],
+  "n_unmeasured_LE": 10,
+  "n_no_mc_LE": 0,
+  "n_unmeasured_ME": 10,
+  "n_no_mc_ME": 1,
+  "n_excluded": 11,
+  "n_clipped_low": 82,
+  "n_clipped_high": 4,
+  "w_LE_median": 0.9062839182076949,
+  "w_LE_min": 8.988896924776658e-05,
+  "w_LE_max": 21.261573988362613,
+  "w_ME_median": 1.2025925797971386,
+  "w_ME_min": 0.005730284786467092,
+  "w_ME_max": 6.471640462255881,
+  "w_BNB_raw_median": 0.6337326902174707,
+  "w_BNB_raw_min": -3.5006135861548686,
+  "w_BNB_raw_max": 41.51712526730348,
+  "w_BNB_median": 0.6337326902174707,
+  "w_BNB_min": 0.0,
+  "w_BNB_max": 10.0
+}
