@@ -27,14 +27,14 @@ exactly 1.0. W modes follow fakedata/tercile.py.
 
 import numpy as np
 
-from ..calculator import Calculator, register
+from ..calculator import Calculator, dedup, register
 from ..sbruce import valid
 from ..tercile import W_MODES, wmode_weights
 from ..tki import (BE_ECAL, M_MU, M_P, POSTFSI_BRANCHES, POSTFSI_PION_BRANCHES,
                    mom3, opening_cos, sig_cc1p0pi, sig_cc2p0pi,
                    sig_ccpi, sig_t2k_nc1pi, tki_ptx_pty, tki_vars)
 from ..xsec_table import Table1D, load_t2k_table, load_ub_table
-from .qe_zexp import deut_to_minerva_weight
+from .qe_zexp import QE_BRANCHES, deut_to_minerva_weight
 
 
 def _sanitize(name):
@@ -72,13 +72,26 @@ class XSecMeasCalculator(Calculator):
         """Returns (x,) for 1D, (x, y) for 2D, (x, y, z) for 3D."""
         raise NotImplementedError
 
-    def branches_needed(self):
+    def table_branches(self):
+        """Branches signal_mask() and observable() read (subclass hook).
+
+        Deliberately incomplete: branches_needed() below adds what the base
+        compute() loads on every instance's behalf.
+        """
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
+    def branches_needed(self):
+        """cvwgt / genie_W drive the W-tercile modes and are loaded
+        unconditionally by compute(); divide_out_ff additionally pulls in the
+        Nieves QE branches read by deut_to_minerva_weight()."""
+        return dedup(self.table_branches(),
+                     ["cvwgt", "genie_W"],
+                     QE_BRANCHES if self.divide_out_ff else [])
+
     def compute(self, sbruce):
         n = sbruce.n_entries
-        a = sbruce.arrays(self.branches_needed() + ["cvwgt", "genie_W"])
+        a = sbruce.arrays(self.branches_needed())
         table = self.load_table()
 
         sig = self.signal_mask(a)
@@ -119,8 +132,8 @@ class UBCC1p0pi(XSecMeasCalculator):
     default_variable = "dpt_dat"
     _CSV = "ub_cc1p0pi_xsec.csv"
 
-    def branches_needed(self):
-        return POSTFSI_BRANCHES
+    def table_branches(self):
+        return list(POSTFSI_BRANCHES)
 
     def load_table(self):
         obs = ("DeltaAlphaT_DeltaPT" if self.variable in ("dpt_dat", "DeltaAlphaT_DeltaPT")
@@ -166,8 +179,8 @@ class UBCC2p0pi(XSecMeasCalculator):
     default_variable = "delta_PT"
     _CSV = "ub_cc2p0pi_xsec.csv"
 
-    def branches_needed(self):
-        return POSTFSI_BRANCHES
+    def table_branches(self):
+        return list(POSTFSI_BRANCHES)
 
     def load_table(self):
         return load_ub_table(self._CSV, self.variable)
@@ -214,7 +227,7 @@ class UBCCpi(XSecMeasCalculator):
     default_variable = "PionMomentum"
     _CSV = "ub_ccpi_xsec.csv"
 
-    def branches_needed(self):
+    def table_branches(self):
         return POSTFSI_BRANCHES + POSTFSI_PION_BRANCHES
 
     def load_table(self):
@@ -244,9 +257,10 @@ class T2KNC1pi(XSecMeasCalculator):
     calc_name = "t2k_nc1pi"
     default_variable = "p_costh"
 
-    def branches_needed(self):
-        return ["nu_E", "true_isnc", "true_pdg", "true_np", "true_npi",
-                "true_npi0"] + POSTFSI_PION_BRANCHES
+    def table_branches(self):
+        # sig_t2k_nc1pi is a pure NC / one-charged-pion final-state cut: no
+        # beam-energy, flavour or proton-count branch is read.
+        return ["true_isnc", "true_npi", "true_npi0"] + POSTFSI_PION_BRANCHES
 
     def load_table(self):
         if self.variable != "p_costh":

@@ -11,13 +11,22 @@ friend like multisigmaTree.
 
 Usage:
     ./venv/bin/python reweight.py <config.yaml> [--input FILE] [--output FILE]
+                                  [--check-branches] [--skip-incomplete]
 
 --input/--output override the config's input/output entries (useful for
-running one config over many files).
+running one config over many files). --check-branches is a dry run that only
+verifies the input has every branch the configured calculators declare;
+--skip-incomplete drops the calculators whose branches are absent and runs
+the rest (for older sBruce schemas).
 
 ================================================================================
 TBranches of SelectedEvents ASSUMED PRESENT by the reweighting code
 ================================================================================
+The table below is the annotated union over all calculators. The machine-
+readable source of truth is each calculator's branches_needed(); the driver
+checks a given file against the configured set before running anything (see
+--check-branches). Keep this table in step with it for the physics notes.
+
 Event bookkeeping / weights:
     cvwgt                       central-value event weight (used for
                                 normalizations and W-tercile populations)
@@ -58,12 +67,14 @@ Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
                                         SPP photon veto)
     true_np, true_npi, true_npi0        final-state particle counts
 
-Friend tree multisigmaTree (OPTIONAL -- used when present):
+Friend tree multisigmaTree (OPTIONAL -- not read by any calculator):
     multisigma_ZExpPCAWeighter_SBN_v3_MvA_b1 (+ _sigma)
-                                stored GENIE deuterium->MINERvA axial-FF CV
-                                weight (sigma=0 entry); used by the
-                                divide_out_ff: stored option and for
-                                validating the Nieves cross-section port
+                                stored GENIE deuterium->MINERvA axial-FF
+                                variations. These are CV-normalized, so there
+                                is no stored CV weight for divide_out_ff to
+                                use -- that option recomputes the weight with
+                                the Nieves port. Read only by
+                                validation/validate_nieves.py.
 ================================================================================
 
 Sentinel convention: float branches use -999 for "not filled"; the code treats
@@ -77,7 +88,7 @@ import sys
 import numpy as np
 import yaml
 
-from fakedata import calculator
+from fakedata import ReBruceError, calculator
 from fakedata.output import write_output
 from fakedata.sbruce import SBruceFile
 
@@ -85,7 +96,8 @@ from fakedata.sbruce import SBruceFile
 import fakedata.calculators  # noqa: F401
 
 
-def run(config, input_path=None, output_path=None):
+def run(config, input_path=None, output_path=None,
+        check_only=False, skip_incomplete=False):
     input_path = input_path or config["input"]
     output_path = output_path or config.get("output")
     if output_path is None:
@@ -96,11 +108,48 @@ def run(config, input_path=None, output_path=None):
 
     calcs = [calculator.build(entry) for entry in config["calculators"]]
 
-    print(f"[reweight] input:  {input_path}")
-    print(f"[reweight] output: {output_path}")
+    print(f"[reweight] input:  {input_path}", flush=True)
+    if not check_only:
+        print(f"[reweight] output: {output_path}", flush=True)
 
     weights = {}
     with SBruceFile(input_path) as sbruce:
+        # preflight: fail fast, before any calculator runs, on a file whose
+        # schema lacks branches the configured calculators declare
+        report = calculator.check_branches(sbruce, calcs)
+        bad = calculator.blocked(report)
+        # flush: the report is stdout, the MissingBranchError message is
+        # stderr -- without this they interleave out of order
+        print(calculator.format_branch_report(report, input_path), flush=True)
+
+        if check_only:
+            if bad:
+                n_ok = len(calcs) - len(bad)
+                remedy = (f"re-run with --skip-incomplete to drop them and "
+                          f"run the other {n_ok}" if n_ok else
+                          "no calculator can run on this file")
+                raise calculator.MissingBranchError(
+                    f"--check-branches: {len(bad)} of {len(calcs)} configured "
+                    f"calculators cannot run on {input_path}; {remedy}")
+            print("[reweight] --check-branches: OK, no output written")
+            return None
+
+        if bad:
+            if not skip_incomplete:
+                raise calculator.MissingBranchError(
+                    f"{len(bad)} of {len(calcs)} configured calculators need "
+                    f"branches absent from {input_path} (listed above); "
+                    f"re-run with --skip-incomplete to drop them")
+            dropped = [c for c, _ in bad]
+            print(f"[reweight] --skip-incomplete: dropping {len(dropped)} of "
+                  f"{len(calcs)} calculators "
+                  f"({', '.join(c.type_name for c in dropped)})")
+            calcs = [c for c, missing in report if not missing]
+            if not calcs:
+                raise calculator.MissingBranchError(
+                    "--skip-incomplete dropped every configured calculator; "
+                    "nothing to do")
+
         for calc in calcs:
             print(f"  running calculator: {calc.type_name}")
             branches = calc.compute(sbruce)
@@ -127,12 +176,29 @@ def main():
     ap.add_argument("config", help="YAML configuration file")
     ap.add_argument("--input", help="override config input file")
     ap.add_argument("--output", help="override config output file")
+    ap.add_argument(
+        "--check-branches", action="store_true",
+        help="dry run: report which SelectedEvents branches the configured "
+             "calculators need and which the input file is missing, then exit "
+             "without writing an output file (status 1 if any are missing)")
+    ap.add_argument(
+        "--skip-incomplete", action="store_true",
+        help="instead of failing, drop the calculators whose branches are "
+             "missing from the input file and run the rest (ignored with "
+             "--check-branches, which always reports the full picture)")
     args = ap.parse_args()
 
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    run(config, input_path=args.input, output_path=args.output)
+    try:
+        run(config, input_path=args.input, output_path=args.output,
+            check_only=args.check_branches,
+            skip_incomplete=args.skip_incomplete)
+    except ReBruceError as e:
+        print(f"[reweight] ERROR: {e}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

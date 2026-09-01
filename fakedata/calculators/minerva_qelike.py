@@ -108,8 +108,8 @@ class MINERvA3DQELike(XSecMeasCalculator):
                 "minerva_3dqelike has a single 3D (p_z, p_T, SumT_p) "
                 f"measurement; variable must be '{self.default_variable}'")
 
-    def branches_needed(self):
-        return MINERVA_QELIKE_BRANCHES
+    def table_branches(self):
+        return list(MINERVA_QELIKE_BRANCHES)
 
     def load_table(self):
         return load_minerva_3dqelike_table()
@@ -128,7 +128,7 @@ class MINERvA3DQELike(XSecMeasCalculator):
 
     def _marginalized(self, sbruce):
         """p_z-marginalized weight, applied at any p_z (see module docstring)."""
-        a = sbruce.arrays(self.branches_needed() + ["cvwgt"])
+        a = sbruce.arrays(self.branches_needed())
         n = sbruce.n_entries
         table = self.load_table()
         # no theta cut here: see sig_minerva_qelike(theta_cut=False)

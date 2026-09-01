@@ -58,8 +58,11 @@ class MECBDTCalculator(Calculator):
         self.norm_scale = norm_scale
         self.model = GBReweighterJSON(model or MODEL_PATH)
 
+    def branches_needed(self):
+        return list(BRANCHES)
+
     def compute(self, sbruce):
-        a = sbruce.arrays(BRANCHES)
+        a = sbruce.arrays(self.branches_needed())
         n = sbruce.n_entries
 
         mask = (

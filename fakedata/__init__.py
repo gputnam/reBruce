@@ -6,3 +6,11 @@ weights into a new friend TTree ("fakedataTree") in a copy of the input file.
 """
 
 __version__ = "0.1.0"
+
+
+class ReBruceError(Exception):
+    """A user-facing problem with the inputs (bad file, missing branches).
+
+    The driver catches these and prints a one-line message instead of a
+    traceback; anything else is a bug and keeps its traceback.
+    """

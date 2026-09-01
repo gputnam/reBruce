@@ -425,6 +425,9 @@ class _StubSBruce:
     def arrays(self, branches):
         return {b: self._a[b] for b in branches}
 
+    def has_branch(self, name):
+        return name in self._a
+
 
 def _minerva_sample(rng, n=4000):
     """Synthetic events spread over the measured (p_z, p_T, SumT_p) region
@@ -454,7 +457,7 @@ def test_minerva_marginalized_reproduces_3d_yield_per_cell():
     sb, _ = _minerva_sample(np.random.default_rng(7))
     wm = calc.compute(sb)[calc.branch + MARG_SUFFIX]
 
-    a = sb.arrays(calc.branches_needed() + ["cvwgt"])
+    a = sb.arrays(calc.branches_needed())
     cv = a["cvwgt"]
     table = calc.load_table()
     sig = sig_minerva_qelike(a, calc.pz_scale, theta_cut=False)
@@ -482,7 +485,7 @@ def test_minerva_marginalized_drops_theta_cut():
     calc = MINERvA3DQELike()
     sb, _ = _minerva_sample(np.random.default_rng(3))
     out = calc.compute(sb)
-    a = sb.arrays(calc.branches_needed() + ["cvwgt"])
+    a = sb.arrays(calc.branches_needed())
 
     with_th = sig_minerva_qelike(a, calc.pz_scale)
     no_th = sig_minerva_qelike(a, calc.pz_scale, theta_cut=False)
@@ -506,7 +509,7 @@ def test_minerva_marginalized_applies_outside_pz_window():
     w3, wm = out[calc.branch], out[calc.branch + MARG_SUFFIX]
 
     from fakedata.tki import sig_minerva_qelike
-    a = sb.arrays(calc.branches_needed() + ["cvwgt"])
+    a = sb.arrays(calc.branches_needed())
     table = calc.load_table()
     obs = calc.observable(a)
     marg_sig = sig_minerva_qelike(a, calc.pz_scale, theta_cut=False)
@@ -659,3 +662,201 @@ def test_spp_weights_are_finite_and_unclipped():
     w = np.outer(spp_q2_reweight(q2), spp_tpi_reweight(tpi))
     assert np.all(np.isfinite(w))
     assert w.min() >= 0.0 and w.max() < 10.0
+
+
+# ---------------------------------------------------------------------------
+# Branch declarations and preflight
+# ---------------------------------------------------------------------------
+
+def _all_calcs():
+    """One instance of every registered calculator, with default options."""
+    import fakedata.calculators  # noqa: F401  (importing registers them)
+    from fakedata.calculator import REGISTRY
+
+    return [cls() for cls in REGISTRY.values()]
+
+
+def _full_branch_stub(n=8, **overrides):
+    """A _StubSBruce carrying every branch the default calculators declare."""
+    a = {b: np.full(n, -999.0) for c in _all_calcs()
+         for b in c.branches_needed()}
+    a.update(overrides)
+    return _StubSBruce(a)
+
+
+def test_every_registered_calculator_declares_branches():
+    calcs = _all_calcs()
+    assert len(calcs) == 9
+    for c in calcs:
+        b = c.branches_needed()
+        assert isinstance(b, list) and b, c.type_name
+        assert all(isinstance(x, str) for x in b), c.type_name
+
+
+def test_branches_needed_is_deduplicated_and_stable():
+    for c in _all_calcs():
+        b = c.branches_needed()
+        assert len(set(b)) == len(b), c.type_name
+        # calling twice must not accumulate
+        assert c.branches_needed() == b, c.type_name
+
+
+def test_branches_needed_returns_a_copy():
+    """A caller doing `branches_needed() + [...]` must not mutate a constant."""
+    from fakedata.tki import POSTFSI_BRANCHES
+
+    before = list(POSTFSI_BRANCHES)
+    for c in _all_calcs():
+        c.branches_needed().append("__scribble__")
+    assert POSTFSI_BRANCHES == before
+    for c in _all_calcs():
+        assert "__scribble__" not in c.branches_needed()
+
+
+def test_xsec_calculators_declare_cvwgt_and_genie_w():
+    """compute() loads both unconditionally, so both must be declared."""
+    from fakedata.calculator import REGISTRY
+
+    for name in ("ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi", "t2k_nc1pi",
+                 "minerva_3dqelike"):
+        needed = set(REGISTRY[name]().branches_needed())
+        assert {"cvwgt", "genie_W"} <= needed, name
+
+
+def test_divide_out_ff_declares_qe_branches():
+    """Regression: divide_out_ff routes through deut_to_minerva_weight(),
+    which reads QE_BRANCHES that no subclass declared before."""
+    from fakedata.calculators.qe_zexp import QE_BRANCHES
+    from fakedata.calculators.xsec_meas import UBCC1p0pi
+
+    assert not set(QE_BRANCHES) <= set(UBCC1p0pi().branches_needed())
+    assert set(QE_BRANCHES) <= set(
+        UBCC1p0pi(divide_out_ff=True).branches_needed())
+
+
+class _RecordingSBruce(_StubSBruce):
+    """Stub that fails the test if compute() reads an undeclared branch."""
+
+    def __init__(self, arrays, allowed):
+        super().__init__(arrays)
+        self._allowed = set(allowed)
+
+    def arrays(self, branches):
+        extra = [b for b in branches if b not in self._allowed]
+        assert not extra, f"compute() read undeclared branches: {extra}"
+        return super().arrays(branches)
+
+
+@pytest.mark.parametrize("type_name", [
+    "mec_bdt", "qe_zexp_mva_to_lqcd", "pi_fsi_ha2025",
+    "jaesung_lowq2_pi_enhancement", "ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi",
+    "t2k_nc1pi", "minerva_3dqelike",
+])
+def test_compute_reads_only_declared_branches(type_name):
+    """The anti-drift test: what compute() loads must be what it declares.
+
+    Every branch is at the -999 sentinel, so no calculator has any signal
+    event; that exercises the load path without needing physical samples.
+    """
+    from fakedata.calculator import REGISTRY
+
+    calc = REGISTRY[type_name]()
+    needed = calc.branches_needed()
+    sb = _RecordingSBruce({b: np.full(8, -999.0) for b in needed}, needed)
+    out = calc.compute(sb)
+    for w in out.values():
+        assert len(w) == 8 and np.all(np.isfinite(w))
+
+
+def test_compute_reads_only_declared_branches_divide_out_ff():
+    from fakedata.calculators.xsec_meas import UBCC1p0pi
+
+    calc = UBCC1p0pi(divide_out_ff=True)
+    needed = calc.branches_needed()
+    sb = _RecordingSBruce({b: np.full(8, -999.0) for b in needed}, needed)
+    calc.compute(sb)
+
+
+def test_check_branches_all_present():
+    from fakedata.calculator import blocked, check_branches
+
+    calcs = _all_calcs()
+    report = check_branches(_full_branch_stub(), calcs)
+    assert len(report) == len(calcs)
+    assert all(missing == [] for _, missing in report)
+    assert blocked(report) == []
+
+
+def _drop(*branches):
+    """A stub missing the named branches, otherwise complete."""
+    sb = _full_branch_stub()
+    for b in branches:
+        del sb._a[b]
+    return sb
+
+
+def test_check_branches_reports_missing_in_declared_order():
+    from fakedata.calculator import blocked, check_branches
+
+    calcs = _all_calcs()
+    sb = _drop("genie_prefsi_n_px", "true_cpi_p")
+    report = check_branches(sb, calcs)
+    bad = {c.type_name: missing for c, missing in blocked(report)}
+    assert set(bad) == {"qe_zexp_mva_to_lqcd", "jaesung_lowq2_pi_enhancement",
+                        "ub_ccpi", "t2k_nc1pi"}
+    assert bad["qe_zexp_mva_to_lqcd"] == ["genie_prefsi_n_px"]
+    assert bad["t2k_nc1pi"] == ["true_cpi_p"]
+    # each missing list is a subsequence of that calculator's declaration
+    for c, missing in report:
+        decl = c.branches_needed()
+        assert missing == [b for b in decl if b in set(missing)]
+
+
+def test_check_branches_cvwgt_blocks_nearly_everything():
+    """cvwgt is read by every calculator except the three that need no
+    per-file normalization or W-tercile population."""
+    from fakedata.calculator import blocked, check_branches
+
+    report = check_branches(_drop("cvwgt"), _all_calcs())
+    runnable = {c.type_name for c, missing in report if not missing}
+    assert runnable == {"pi_fsi_ha2025", "jaesung_lowq2_pi_enhancement",
+                        "qe_zexp_mva_to_lqcd"}
+    assert len(blocked(report)) == 6
+
+
+def test_format_branch_report_names_branches_and_calculators():
+    from fakedata.calculator import check_branches, format_branch_report
+
+    calcs = _all_calcs()
+    txt = format_branch_report(
+        check_branches(_drop("genie_prefsi_n_px", "true_cpi_p"), calcs),
+        "/some/file.root")
+    assert "MISSING" in txt
+    assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
+    assert "qe_zexp_mva_to_lqcd" in txt
+    assert "blocked calculators (4 of 9)" in txt
+    assert "/some/file.root" in txt
+
+    ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")
+    assert "all present" in ok and "MISSING" not in ok
+
+
+def test_sbruce_errors_are_readable(tmp_path):
+    import uproot
+
+    from fakedata import ReBruceError
+    from fakedata.sbruce import SBruceError, SBruceFile
+
+    assert issubclass(SBruceError, ReBruceError)
+
+    with pytest.raises(SBruceError, match="not a readable ROOT file"):
+        SBruceFile(os.path.join(os.path.dirname(__file__), "bdt_fixture.json"))
+
+    with pytest.raises(SBruceError, match="cannot open input file"):
+        SBruceFile(str(tmp_path / "does_not_exist.root"))
+
+    other = str(tmp_path / "other.root")
+    with uproot.recreate(other) as f:
+        f["Events"] = {"x": np.arange(4, dtype=np.float64)}
+    with pytest.raises(SBruceError, match="has no 'SelectedEvents' tree"):
+        SBruceFile(other)

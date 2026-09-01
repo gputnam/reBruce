@@ -44,7 +44,7 @@ final-state definition only.
 import numpy as np
 
 from ..bba07 import M_PION
-from ..calculator import Calculator, register
+from ..calculator import Calculator, dedup, register
 from ..landau import landau
 from ..sbruce import valid
 
@@ -106,7 +106,9 @@ def _present(a, prefix):
 
 Q2_BRANCHES = ["genie_q0", "genie_q3"]
 
-POSTFSI_BRANCHES = ["true_npi", "true_npi0", "true_g_p", "true_cpi_p"]
+# NB: distinct from tki.POSTFSI_BRANCHES -- these are the SPP post-FSI
+# signal-definition branches only.
+SPP_POSTFSI_BRANCHES = ["true_npi", "true_npi0", "true_g_p", "true_cpi_p"]
 
 PREFSI_BRANCHES = [
     "genie_prefsi_cpi_px", "genie_prefsi_cpi_py", "genie_prefsi_cpi_pz",
@@ -120,8 +122,11 @@ class SPPLowQ2PiEnhancement(Calculator):
     def __init__(self, branch=BRANCH):
         self.branch = branch
 
+    def branches_needed(self):
+        return dedup(Q2_BRANCHES, SPP_POSTFSI_BRANCHES, PREFSI_BRANCHES)
+
     def compute(self, sbruce):
-        a = sbruce.arrays(Q2_BRANCHES + POSTFSI_BRANCHES + PREFSI_BRANCHES)
+        a = sbruce.arrays(self.branches_needed())
         n = sbruce.n_entries
 
         has_q2 = valid(a["genie_q0"], a["genie_q3"])

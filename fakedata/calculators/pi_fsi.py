@@ -45,8 +45,11 @@ class PiFSIhA2025(Calculator):
         self.branch = branch
         self.rw = HA2025Reweighter(table)
 
+    def branches_needed(self):
+        return list(BRANCHES)
+
     def compute(self, sbruce):
-        a = sbruce.arrays(BRANCHES)
+        a = sbruce.arrays(self.branches_needed())
         n = sbruce.n_entries
 
         has_cpi = valid(a["genie_prefsi_cpi_px"], a["genie_prefsi_cpi_py"],

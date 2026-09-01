@@ -24,6 +24,29 @@ No external python installs, ROOT, GENIE, or NUISANCE are needed at runtime.
     --output output/FILE_sbruce_fakedata.root
 ```
 
+`--check-branches` verifies, without writing anything, that the input file
+has every `SelectedEvents` branch the configured calculators declare, and
+exits nonzero if not, naming the missing branches and the calculators each
+one blocks. A normal run performs the same check first and fails fast rather
+than dying part-way through with an uproot `KeyError`. `--skip-incomplete`
+drops the calculators whose branches are absent and runs the rest -- useful
+for older sBruce schemas, at the cost of an output with fewer weight
+branches than its siblings.
+
+### A whole production directory
+
+`reweight.py` takes one file at a time. To run a full production directory
+-- environment setup, working out which files are central-value MC,
+preflighting the branches, running and validating -- use the `reweight-sbruce`
+skill (`.claude/skills/reweight-sbruce/SKILL.md`):
+
+```
+/reweight-sbruce /Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
+```
+
+It defaults to `configs/all_calculators.yaml` and writes to
+`output/<input-folder-name>/`.
+
 The config lists the input (optional if given on the command line) and the
 calculators to run:
 
@@ -44,8 +67,11 @@ calculators:
     pz_ref: LE                              # default; p_z scaling reference
 ```
 
-The full list of `SelectedEvents` branches the reweighting code assumes is
-documented in the header comment of `reweight.py`. Weight branches are
+Each calculator declares the `SelectedEvents` branches it reads in
+`branches_needed()` -- that is the source of truth, and what
+`--check-branches` verifies a file against. The header comment of
+`reweight.py` carries the same list annotated with the physics meaning of
+each branch. Weight branches are
 exactly `1.0` outside each calculator's domain, so in PROfit they can be
 multiplied unconditionally into any `additional_weight`:
 
@@ -329,8 +355,11 @@ class MyCalculator(Calculator):
     def __init__(self, branch="wgt_my_calc", **options):
         self.branch = branch               # config keys arrive as kwargs
 
+    def branches_needed(self):             # every branch compute() reads
+        return ["genie_mode", "cvwgt"]
+
     def compute(self, sbruce):             # sbruce: fakedata.sbruce.SBruceFile
-        a = sbruce.arrays(["genie_mode", "cvwgt"])   # numpy arrays
+        a = sbruce.arrays(self.branches_needed())    # numpy arrays
         w = self.ones(sbruce.n_entries)              # start from 1.0
         mask = a["genie_mode"] == 0                  # your domain
         w[mask] = ...                                # your weights
@@ -341,12 +370,16 @@ class MyCalculator(Calculator):
 3. Rules: weights must be finite, exactly 1.0 outside the calculator's
    domain, and one array entry per `SelectedEvents` entry. Treat any float
    branch value <= -900 as unfilled (`fakedata.sbruce.valid` helps).
-   Document any newly-assumed branches in the `reweight.py` header.
+   Declare every branch you read in `branches_needed()` and load them with
+   `sbruce.arrays(self.branches_needed())`, so the declaration cannot drift
+   from what is read -- `--check-branches` relies on it. Add the physics
+   annotation for any new branch to the `reweight.py` header too.
 
 ## Repository layout
 
 ```
-reweight.py            driver (header lists all assumed TBranches)
+reweight.py            driver (--check-branches preflight; the header
+                       annotates all assumed TBranches)
 fakedata/              package: sbruce I/O, output writer, physics modules
 fakedata/calculators/  the weight calculators
 data/                  BDT model + measurement weight tables (provenance inside)

@@ -14,6 +14,8 @@ sBruce conventions (schema 19):
 import numpy as np
 import uproot
 
+from . import ReBruceError
+
 SENTINEL = -999.0
 # values > VALID_MIN are considered filled (sentinel is exactly -999)
 VALID_MIN = -900.0
@@ -28,6 +30,10 @@ MODE_RES = 1
 MODE_DIS = 2
 MODE_COH = 3
 MODE_MEC = 10
+
+
+class SBruceError(ReBruceError):
+    """The input is not a readable sBruce file."""
 
 
 def valid(*arrays):
@@ -49,8 +55,28 @@ class SBruceFile:
 
     def __init__(self, path):
         self.path = path
-        self._file = uproot.open(path)
-        self._tree = self._file[TREE_NAME]
+        try:
+            self._file = uproot.open(path)
+        except OSError as e:
+            # missing file, a directory, permissions
+            raise SBruceError(f"cannot open input file: {path}\n  {e}") from None
+        except Exception as e:
+            # uproot raises ValueError("not a ROOT file: first four bytes ...")
+            # for a non-ROOT file, and deserialization errors for a corrupt one
+            raise SBruceError(
+                f"not a readable ROOT file: {path}\n"
+                f"  {type(e).__name__}: {e}") from None
+        try:
+            self._tree = self._file[TREE_NAME]
+        except KeyError:
+            # uproot's KeyInFileError subclasses KeyError
+            keys = sorted({k.split(";")[0]
+                           for k in self._file.keys(recursive=False)})
+            self._file.close()
+            raise SBruceError(
+                f"ROOT file has no '{TREE_NAME}' tree: {path}\n"
+                f"  top-level keys: {', '.join(keys) if keys else '(none)'}\n"
+                f"  (is this an sBruce file?)") from None
         self._cache = {}
         self.n_entries = self._tree.num_entries
 

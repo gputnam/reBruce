@@ -95,7 +95,11 @@ def deut_to_minerva_weight(sbruce, xsec=None):
     """Per-event deuterium->MINERvA CV Nieves weight (nusystematics
     convention: gA fixed at the AR23 CV, T0 -> -0.75). Weight = 1 outside
     the numu/numubar CC QE domain. Used by the divide-out-form-factor
-    option of the cross-section-measurement calculators."""
+    option of the cross-section-measurement calculators.
+
+    NOTE: this is a free function, not a calculator -- its callers must
+    declare QE_BRANCHES in their own branches_needed() (see
+    XSecMeasCalculator.branches_needed and the divide_out_ff option)."""
     a = sbruce.arrays(QE_BRANCHES)
     w = np.ones(sbruce.n_entries, dtype=np.float64)
     xsec = xsec or NievesQEXSec()
@@ -119,8 +123,11 @@ class QEZexpMvaToLQCD(Calculator):
         self.ga_convention = ga_convention
         self.xsec = NievesQEXSec(n_r=n_r)
 
+    def branches_needed(self):
+        return list(QE_BRANCHES)
+
     def compute(self, sbruce):
-        a = sbruce.arrays(QE_BRANCHES)
+        a = sbruce.arrays(self.branches_needed())
         n = sbruce.n_entries
 
         weights = self.ones(n)
