@@ -40,6 +40,29 @@ export PYTHONPATH=$(root-config --libdir)
 
 Without it the default uproot writer is unaffected.
 
+### On a FNAL GPVM / build machine
+
+The two commands above assume you supply python (and, for `--stl-vectors`,
+ROOT) yourself. On an SBND GPVM or build node (AlmaLinux 9, no container),
+`install_gpvm.sh` does the whole bootstrap from cvmfs instead -- run it once:
+
+```bash
+./install_gpvm.sh          # --force to rebuild, --no-tests to skip pytest
+```
+
+It sets up ROOT with PyROOT from cvmfs via spack (pinned to
+`spack-fnal-v1.1.1` + `root@6.28.12`), builds an isolated `venv` from that
+python, `pip install`s `requirements.txt`, verifies every import (including
+`ROOT`), and runs the test suite. Then, in any shell:
+
+```bash
+source setup_gpvm.sh       # loads ROOT via spack + activates venv
+```
+
+Because `spack load` puts PyROOT on `PYTHONPATH`, the venv stays isolated
+(pip owns numpy / uproot / ...) yet `import ROOT` still works, so
+`--stl-vectors` runs without a separate ROOT install.
+
 ## Usage
 
 ```bash
