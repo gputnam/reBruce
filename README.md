@@ -4,7 +4,21 @@ Fake-data re-weighting for sBruce files (SBN oscillation analysis). A
 configurable driver script evaluates per-event weight calculators on the
 truth / GENIE-pre-FSI content of a sBruce file and writes the weights to a
 new **friend TTree** (`fakedataTree`) in a byte-identical copy of the input
-file, one scalar `double` branch per calculator (and per W-mode).
+file, one two-knot systematic dial per calculator (and per W-mode).
+
+Each dial is stored in the same shape the sBruce `multisigmaTree` uses for a
+one-sided variation -- **cv** at sigma 0 and **ps1** at sigma 1, with a
+companion `_sigma` knot list:
+
+```
+multisigma_fdwgt_mec_bdt        [1.0, 1.0234]     <- cv, ps1
+multisigma_fdwgt_mec_bdt_sigma  [0.0, 1.0]
+```
+
+The cv knot is identically 1.0, matching the CV-normalized convention of every
+stored sBruce weight, so a dial contributes nothing on top of `cvwgt` until
+PROfit pulls it to +1 sigma. 35 of the file's GENIE knobs already use exactly
+this grid (e.g. `GENIEReWeight_SBN_v1_multisigma_VecFFCCQEshape`).
 
 ## Setup
 
@@ -14,7 +28,17 @@ python3 -m venv venv
 ./venv/bin/python -m pytest tests/          # unit tests
 ```
 
-No external python installs, ROOT, GENIE, or NUISANCE are needed at runtime.
+No external python installs, ROOT, GENIE, or NUISANCE are needed at runtime --
+with one optional exception. `--stl-vectors` (below) writes the dials through
+PyROOT, which is not pip-installable and ships with ROOT itself:
+
+```bash
+brew install root                       # or: conda install -c conda-forge root
+export PYTHONPATH=$(root-config --libdir)
+./venv/bin/python -c "import ROOT; print(ROOT.gROOT.GetVersion())"   # 6.36.00
+```
+
+Without it the default uproot writer is unaffected.
 
 ## Usage
 
@@ -32,6 +56,15 @@ than dying part-way through with an uproot `KeyError`. `--skip-incomplete`
 drops the calculators whose branches are absent and runs the rest -- useful
 for older sBruce schemas, at the cost of an output with fewer weight
 branches than its siblings.
+
+`--stl-vectors` writes the dials as genuine `std::vector<double>` branches
+using PyROOT. That is the type PROfit's `SetBranchAddress` binds to
+(`PROcreate.cxx`, `eweight_type = double`), so it is what a file destined for a
+PROfit fit needs. Without the flag the tree is written by uproot, which cannot
+write STL vectors and emits an `int32` counter branch plus a `double[]` leaf
+array instead -- readable by uproot and by `TTreeFormula`, and the same shape
+`gump.py` hands to `MakesBruceNew.C`, but not bindable as a vector. Values are
+identical either way.
 
 ### A whole production directory
 
@@ -71,19 +104,25 @@ Each calculator declares the `SelectedEvents` branches it reads in
 `branches_needed()` -- that is the source of truth, and what
 `--check-branches` verifies a file against. The header comment of
 `reweight.py` carries the same list annotated with the physics meaning of
-each branch. Weight branches are
-exactly `1.0` outside each calculator's domain, so in PROfit they can be
-multiplied unconditionally into any `additional_weight`:
+each branch.
+
+The ps1 knot is exactly `1.0` outside each calculator's domain, so a dial is a
+no-op there at any sigma. Declare the tree as a friend and list the dials on
+the allowlist, exactly like any other spline systematic:
 
 ```xml
 <friend treename="fakedataTree" />
 ...
-<branch ... additional_weight="(!true_isnc)*(true_pdg==14||true_pdg==-14)*cvwgt*wgt_mec_bdt" ...>
+<allowlist type="spline" tag="fakedata" plotname="MEC BDT">multisigma_fdwgt_mec_bdt</allowlist>
 ```
+
+Both halves of the branch name are load-bearing: `multisigma` is the routing
+keyword `MakesBruceNew.C` sorts weight branches on, and PROfit binds the knob
+value list off the `_sigma` suffix, on friend trees as well as the main chain.
 
 ## Calculators
 
-### `mec_bdt` -> branch `wgt_mec_bdt`
+### `mec_bdt` -> branch `fdwgt_mec_bdt`
 Reweights numu CC MEC events (`genie_mode == 10`) from AR23/SuSAv2 to the
 exclusive-Valencia 2p2h model using a BDT (hep_ml GBReweighter, from
 PROfit/MEC-BDT-WGT) evaluated on **GENIE pre-FSI** kinematics: the two
@@ -96,7 +135,7 @@ cvwgt-weighted mean over reweighted events is exactly 1 (shape-only; MEC
 rate unchanged). Options: `normalize: per-file | none | fixed` (+
 `norm_scale`).
 
-### `qe_zexp_mva_to_lqcd` -> branch `wgt_qe_zexp_mva_to_lqcd`
+### `qe_zexp_mva_to_lqcd` -> branch `fdwgt_qe_zexp_mva_to_lqcd`
 Reweights the axial form factor of numu and numubar CC QE events from the MINERvA
 measurement (Nature 614 (2023) 48, z-expansion a1..a4 = {1.50, -1.2, -0.1,
 0.2}, T0 = -0.75) to the LQCD average (a1..a2 = {1.721, -0.31}, T0 = -0.5,
@@ -128,7 +167,7 @@ Option `ga_convention: tune` (default; each coefficient set uses its own
 FA(0)) or `nusyst` (both use the AR23 CV FA(0) = -1.2670, the
 nusystematics ZExpPCAWeighter convention).
 
-### `pi_fsi_ha2025` -> branch `wgt_pi_fsi_ha2025`
+### `pi_fsi_ha2025` -> branch `fdwgt_pi_fsi_ha2025`
 Reweights the INTRANUKE pion FSI fate fractions from hA2018 to hA2025:
 `w = frac_hA2025 / frac_hA2018` for the FSI fate of the event's leading
 pre-FSI charged pion (cex / abs / inel / pipro from `genie_prefsi_cpi_fsi`,
@@ -142,7 +181,7 @@ of the repository); validated off-grid against the reference reweighter to
 a mean |dw| ~ 6e-4 (up to ~1.6% locally at the steep pipro turn-on near
 KE = 350 MeV).
 
-### `jaesung_lowq2_pi_enhancement` -> branches `wgt_jaesung_lowq2_pi_enhancement_{postfsi,prefsi}`
+### `jaesung_lowq2_pi_enhancement` -> branches `fdwgt_jaesung_lowq2_pi_enhancement_{postfsi,prefsi}`
 The single-pion-production (SPP) central-value correction from the ICARUS NuMI
 numu cross-section analysis (J. Kim), ported from
 [`sbnana/SBNAna/Cuts/NuMIXSecSysts.cxx`][NuMIXSecSysts]: for events passing the
@@ -192,7 +231,7 @@ against the Landau integral representation
 
 ### Cross-section-measurement calculators
 `ub_cc1p0pi`, `ub_cc2p0pi`, `ub_ccpi`, `t2k_nc1pi` -> branches
-`wgt_<calc>_<variable>[_loW|_midW|_hiW]`
+`fdwgt_<calc>_<variable>[_loW|_midW|_hiW]`
 
 Reweight from the AR23 GENIE cross section to the measured cross section,
 per bin of a configurable observable: `w(x) = sigma_data(x) /
@@ -238,7 +277,7 @@ change when reweighting to data. (The sBruce multisigmaTree stores only
 CV-normalized dial variations -- the sigma=0 entries are identically 1 --
 so there is no stored branch to divide by; it must be computed.)
 
-### `minerva_3dqelike` -> branch `wgt_minerva_3dqelike_bnb`
+### `minerva_3dqelike` -> branch `fdwgt_minerva_3dqelike_bnb`
 Reweights numu CC QE-like events from AR23 to the MINERvA triple-differential
 QE-like measurement (D. Ruterbories *et al.*, [arXiv:2606.00745], d3sigma /
 dp_z dp_T dSumT_p on hydrocarbon, LE and ME NuMI beams), after a per-bin
@@ -279,8 +318,8 @@ over the stored protons; sBruce keeps only the leading two, so events with
 `true_np > 2` (19% in region) are under-counted, and the heavy-baryon/charm
 veto cannot be applied (both in MISSING_INFO.md).
 
-**Two branches are produced.** `wgt_minerva_3dqelike_bnb` is the 3D lookup
-above. `wgt_minerva_3dqelike_bnb_pzmarg` **marginalizes the measurement over
+**Two branches are produced.** `fdwgt_minerva_3dqelike_bnb` is the 3D lookup
+above. `fdwgt_minerva_3dqelike_bnb_pzmarg` **marginalizes the measurement over
 p_z** and applies the result to every signal event in a (p_T, SumT_p) cell
 *regardless of its p_z*, and **also drops the theta(mu, nu) < 20 deg cut**:
 for each cell the five p_z bins are averaged with the cvwgt-weighted p_z
@@ -352,7 +391,7 @@ from ..calculator import Calculator, register
 
 @register("my_calc")                       # the config `type:` name
 class MyCalculator(Calculator):
-    def __init__(self, branch="wgt_my_calc", **options):
+    def __init__(self, branch="fdwgt_my_calc", **options):
         self.branch = branch               # config keys arrive as kwargs
 
     def branches_needed(self):             # every branch compute() reads
@@ -370,6 +409,9 @@ class MyCalculator(Calculator):
 3. Rules: weights must be finite, exactly 1.0 outside the calculator's
    domain, and one array entry per `SelectedEvents` entry. Treat any float
    branch value <= -900 as unfilled (`fakedata.sbruce.valid` helps).
+   A calculator returns flat per-event weights; `fakedata/output.py` wraps
+   each one into its cv/ps1 dial and prefixes the name, so `fdwgt_my_calc`
+   reaches the file as `multisigma_fdwgt_my_calc` (+ `_sigma`).
    Declare every branch you read in `branches_needed()` and load them with
    `sbruce.arrays(self.branches_needed())`, so the declaration cannot drift
    from what is read -- `--check-branches` relies on it. Add the physics

@@ -48,7 +48,7 @@ from ..calculator import Calculator, dedup, register
 from ..landau import landau
 from ..sbruce import valid
 
-BRANCH = "wgt_jaesung_lowq2_pi_enhancement"
+BRANCH = "fdwgt_jaesung_lowq2_pi_enhancement"
 POSTFSI_SUFFIX = "_postfsi"
 PREFSI_SUFFIX = "_prefsi"
 

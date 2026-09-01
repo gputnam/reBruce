@@ -41,7 +41,7 @@ BRANCHES = [
 
 @register("pi_fsi_ha2025")
 class PiFSIhA2025(Calculator):
-    def __init__(self, branch="wgt_pi_fsi_ha2025", table=None):
+    def __init__(self, branch="fdwgt_pi_fsi_ha2025", table=None):
         self.branch = branch
         self.rw = HA2025Reweighter(table)
 

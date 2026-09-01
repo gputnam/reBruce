@@ -9,3 +9,11 @@ awkward>=2.0
 pyyaml
 pytest
 matplotlib
+
+# Optional -- only for reweight.py --stl-vectors, which writes the dials as
+# genuine std::vector<double> branches (what PROfit's SetBranchAddress binds
+# to). PyROOT is NOT pip-installable; it ships with ROOT itself:
+#   brew install root          (or: conda install -c conda-forge root)
+#   export PYTHONPATH=$(root-config --libdir)
+# Check:  ./venv/bin/python -c "import ROOT; print(ROOT.gROOT.GetVersion())"
+# Tested with ROOT 6.36.00. Without it the default uproot writer is unaffected.

@@ -117,7 +117,7 @@ def deut_to_minerva_weight(sbruce, xsec=None):
 
 @register("qe_zexp_mva_to_lqcd")
 class QEZexpMvaToLQCD(Calculator):
-    def __init__(self, branch="wgt_qe_zexp_mva_to_lqcd", ga_convention="tune",
+    def __init__(self, branch="fdwgt_qe_zexp_mva_to_lqcd", ga_convention="tune",
                  n_r=16):
         self.branch = branch
         self.ga_convention = ga_convention

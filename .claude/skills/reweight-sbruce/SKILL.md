@@ -7,7 +7,9 @@ description: Run reBruce over a folder of sBruce files - work out which files ar
 
 reBruce evaluates fake-data weight calculators on the truth / GENIE-pre-FSI content
 of an sBruce file and writes them as a `fakedataTree` friend tree in a copy of the
-input. `reweight.py` handles one file at a time; this skill drives it over a whole
+input. Each weight lands as a two-knot dial in the sBruce multisigma shape --
+`multisigma_fdwgt_<calc>` = `[1.0, w]` with `_sigma` = `[0.0, 1.0]`, i.e. cv and
+ps1 -- so PROfit can take it as a `type="spline"` systematic. `reweight.py` handles one file at a time; this skill drives it over a whole
 production directory and does the judgement work around it.
 
 Run everything from the repository root
@@ -21,6 +23,13 @@ Parse the skill's free-form argument string as:
 - **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 9
   calculators, all W modes; this is what the downstream analysis expects).
 - **`--output DIR`** — defaults to `output/<basename of the input folder>/`.
+- **`--stl-vectors`** — pass it through to `reweight.py` when the user asks for
+  PROfit-ready output. It writes the dials as genuine `std::vector<double>`
+  branches via PyROOT instead of uproot's counter + `double[]` leaf array; the
+  numbers are identical either way. It needs ROOT on `PYTHONPATH`
+  (`export PYTHONPATH=$(root-config --libdir)`) — check before starting a long
+  run, since it fails only at the write step:
+  `./venv/bin/python -c "import ROOT"`.
 - **everything else** — free-form context, to be honoured as instructions. It
   overrides the defaults and the classification below. Typical: "SBND only",
   "skip minerva", "also do the dirt files", "set WEIGHT_CLIP to 50",
@@ -231,9 +240,10 @@ Close with:
 
 - files processed, and where the outputs are;
 - files skipped, and the reason for each class, including any unreadable ones;
-- the weight branches written — state the count and confirm every file agrees,
-  listing the names **once** for the set rather than per file (it is a 23-element
-  list for the default config);
+- the dials written — state the count and confirm every file agrees, listing the
+  names **once** for the set rather than per file (23 dials for the default
+  config, so 46 branches with PyROOT or 92 with uproot, which adds a counter per
+  branch), and say which writer ran;
 - the `check_outputs.py` verdict;
 - anything left for the user to decide — `ask` files, incomplete files, large clip
   counts.

@@ -23,9 +23,9 @@ and both already populate the measured bins with ~0% overflow.
 
 Two weight branches are produced:
 
-  wgt_minerva_3dqelike_bnb          the full 3D (p_z, p_T, SumT_p) lookup;
+  fdwgt_minerva_3dqelike_bnb        the full 3D (p_z, p_T, SumT_p) lookup;
                                     weight 1 outside the measured p_z window.
-  wgt_minerva_3dqelike_bnb_pzmarg   the same measurement MARGINALIZED over
+  fdwgt_minerva_3dqelike_bnb_pzmarg the same measurement MARGINALIZED over
                                     p_z and applied to every signal event in
                                     a (p_T, SumT_p) cell regardless of its
                                     p_z. For each cell the 5 p_z bins are
@@ -101,7 +101,7 @@ class MINERvA3DQELike(XSecMeasCalculator):
         self.pz_scale = (1.0 if pz_ref == "none"
                          else E_BNB / PZ_REF_ENERGY[pz_ref])
         super().__init__(w_modes=w_modes,
-                         branch=branch or f"wgt_{self.calc_name}_bnb",
+                         branch=branch or f"fdwgt_{self.calc_name}_bnb",
                          **kwargs)
         if self.variable != self.default_variable:
             raise ValueError(

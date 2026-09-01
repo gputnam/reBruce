@@ -59,7 +59,7 @@ class XSecMeasCalculator(Calculator):
             if m != "nominal" and m not in W_MODES:
                 raise ValueError(f"unknown W mode: {m}")
         self.divide_out_ff = divide_out_ff
-        self.branch = branch or f"wgt_{self.calc_name}_{_sanitize(self.variable)}"
+        self.branch = branch or f"fdwgt_{self.calc_name}_{_sanitize(self.variable)}"
 
     # subclass API ---------------------------------------------------------
     def load_table(self):

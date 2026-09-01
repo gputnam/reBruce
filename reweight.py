@@ -3,21 +3,29 @@
 
 Reads a YAML configuration naming an input sBruce file and a list of weight
 calculators; writes a copy of the input file with a new friend TTree
-("fakedataTree") holding one scalar float64 weight branch per calculator /
-per W-mode. Weights are exactly 1.0 for events outside a calculator's domain,
-so every branch can be multiplied unconditionally into a PROfit
-additional_weight expression (alongside cvwgt), with the tree declared as a
-friend like multisigmaTree.
+("fakedataTree") holding one two-knot systematic dial per calculator /
+per W-mode, in the same shape the sBruce multisigmaTree uses for a one-sided
+variation:
+
+    multisigma_fdwgt_mec_bdt        [1.0, 1.0234]     <- cv, ps1
+    multisigma_fdwgt_mec_bdt_sigma  [0.0, 1.0]
+
+The cv knot is identically 1.0 and the ps1 knot is the fake-data weight, which
+is itself exactly 1.0 for events outside a calculator's domain. The tree is
+declared as a friend like multisigmaTree, and PROfit picks the dials up as
+type="spline" allowlist entries.
 
 Usage:
     ./venv/bin/python reweight.py <config.yaml> [--input FILE] [--output FILE]
                                   [--check-branches] [--skip-incomplete]
+                                  [--stl-vectors]
 
 --input/--output override the config's input/output entries (useful for
 running one config over many files). --check-branches is a dry run that only
 verifies the input has every branch the configured calculators declare;
 --skip-incomplete drops the calculators whose branches are absent and runs
-the rest (for older sBruce schemas).
+the rest (for older sBruce schemas). --stl-vectors writes the dials as real
+std::vector<double> branches with PyROOT (see fakedata/output.py).
 
 ================================================================================
 TBranches of SelectedEvents ASSUMED PRESENT by the reweighting code
@@ -89,7 +97,7 @@ import numpy as np
 import yaml
 
 from fakedata import ReBruceError, calculator
-from fakedata.output import write_output
+from fakedata.output import dial_name, write_output
 from fakedata.sbruce import SBruceFile
 
 # importing the package registers all calculators
@@ -97,7 +105,7 @@ import fakedata.calculators  # noqa: F401
 
 
 def run(config, input_path=None, output_path=None,
-        check_only=False, skip_incomplete=False):
+        check_only=False, skip_incomplete=False, stl_vectors=False):
     input_path = input_path or config["input"]
     output_path = output_path or config.get("output")
     if output_path is None:
@@ -165,9 +173,11 @@ def run(config, input_path=None, output_path=None,
                 weights[name] = np.clip(arr, *calculator.WEIGHT_CLIP)
         n = sbruce.n_entries
 
-    write_output(input_path, output_path, weights, n)
-    print(f"[reweight] wrote {len(weights)} weight branches "
-          f"({', '.join(weights)}) for {n} events")
+    write_output(input_path, output_path, weights, n, stl_vectors=stl_vectors)
+    writer = "PyROOT, std::vector<double>" if stl_vectors else "uproot"
+    print(f"[reweight] wrote {len(weights)} cv/ps1 dials ({writer}) "
+          f"for {n} events: "
+          f"{', '.join(dial_name(name) for name in weights)}")
     return output_path
 
 
@@ -186,6 +196,13 @@ def main():
         help="instead of failing, drop the calculators whose branches are "
              "missing from the input file and run the rest (ignored with "
              "--check-branches, which always reports the full picture)")
+    ap.add_argument(
+        "--stl-vectors", action="store_true",
+        help="write the dials as genuine std::vector<double> branches using "
+             "PyROOT, which is what PROfit's SetBranchAddress binds to. "
+             "Without it the tree is written by uproot, which cannot write "
+             "STL vectors and emits a counter branch plus a double[] leaf "
+             "array instead. Needs ROOT on PYTHONPATH")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -194,7 +211,8 @@ def main():
     try:
         run(config, input_path=args.input, output_path=args.output,
             check_only=args.check_branches,
-            skip_incomplete=args.skip_incomplete)
+            skip_incomplete=args.skip_incomplete,
+            stl_vectors=args.stl_vectors)
     except ReBruceError as e:
         print(f"[reweight] ERROR: {e}", file=sys.stderr)
         return 1

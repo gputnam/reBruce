@@ -26,9 +26,13 @@ reference outputs are gone, skip step 3 and say so rather than silently passing.
 ./venv/bin/python -m pytest tests/ -q
 ```
 
-**Expect:** all pass. As of the preflight change this is **75 tests** (55 original +
-20 branch-declaration/preflight tests). A drop in count means tests were lost, not
-that things got faster.
+**Expect:** all pass. As of the cv/ps1 dial change this is **80 tests** (55 original
++ 20 branch-declaration/preflight tests + 5 output-format tests). A drop in count
+means tests were lost, not that things got faster.
+
+`test_write_output_stl_vectors` is skipped unless PyROOT is importable
+(`export PYTHONPATH=$(root-config --libdir)`); a run reporting `79 passed,
+1 skipped` means ROOT was not on the path, not that anything is wrong.
 
 The highest-value test in that set is `test_compute_reads_only_declared_branches`:
 it drives each calculator through a stub that fails if `compute()` loads a branch
@@ -89,25 +93,76 @@ mkdir -p scratch
   --input $D/SBNDMCCV_12_sbruce.root --output scratch/regress.root >/dev/null
 
 ./venv/bin/python - <<'EOF'
-import numpy as np, uproot
-old = uproot.open('output/SBNDMCCV_12_sbruce_fakedata.root')['fakedataTree']
-new = uproot.open('scratch/regress.root')['fakedataTree']
-assert set(old.keys()) == set(new.keys()), "branch set changed"
+import awkward as ak, numpy as np, uproot
+
+def weights(tree):
+    """{calculator branch -> per-event weight}, either output layout.
+
+    Reads the ps1 knot of a cv/ps1 dial, or a legacy flat wgt_* scalar, so a
+    baseline in output/ predating the dial change still compares.
+    """
+    out = {}
+    for key in tree.keys():
+        if key.startswith('wgt_'):                       # legacy flat scalar
+            out[key[len('wgt_'):]] = tree[key].array(library='np')
+        elif key.startswith('multisigma_fdwgt_') and not key.endswith('_sigma'):
+            knots = np.asarray(ak.to_numpy(ak.to_regular(tree[key].array())))
+            sigma = np.asarray(ak.to_numpy(ak.to_regular(
+                tree[key + '_sigma'].array())))
+            assert np.all(sigma == np.array([0.0, 1.0])), key
+            assert np.all(knots[:, 0] == 1.0), f"cv knot is not 1.0: {key}"
+            out[key[len('multisigma_fdwgt_'):]] = knots[:, 1]
+    return out
+
+old = weights(uproot.open('output/SBNDMCCV_12_sbruce_fakedata.root')['fakedataTree'])
+new = weights(uproot.open('scratch/regress.root')['fakedataTree'])
+assert set(old) == set(new), f"branch set changed: {set(old) ^ set(new)}"
 worst = 0.0
-for b in sorted(new.keys()):
-    a, c = old[b].array(library='np'), new[b].array(library='np')
+for b in sorted(new):
+    a, c = old[b], new[b]
     d = np.max(np.abs(a - c)) if len(a) == len(c) else float('inf')
     if d: print(f"  DIFFERS {b}: max|delta| = {d:.3e}")
     worst = max(worst, d)
-print(f"{len(new.keys())} branches, max |delta| = {worst:.3e}")
+print(f"{len(new)} weights, max |delta| = {worst:.3e}")
 print("BIT-IDENTICAL" if worst == 0 else "CHANGED -- justify before proceeding")
 EOF
 ```
 
-**Expect:** 23 branches, `max |delta| = 0.000e+00`, `BIT-IDENTICAL`.
+**Expect:** 23 weights, `max |delta| = 0.000e+00`, `BIT-IDENTICAL`. The cv knot
+and sigma grid assertions must also hold for every dial.
 
 Any non-zero delta must be explained by an intentional physics change. If you
 intended one, re-baseline by regenerating `output/` and note it in the commit.
+
+### 3b. The STL-vector writer
+
+`--stl-vectors` must produce the same numbers through a different writer.
+Skip this step if `import ROOT` fails.
+
+```bash
+./venv/bin/python reweight.py configs/all_calculators.yaml \
+  --input $D/SBNDMCCV_12_sbruce.root --output scratch/regress_stl.root \
+  --stl-vectors >/dev/null
+
+./venv/bin/python - <<'EOF'
+import awkward as ak, numpy as np, uproot
+a = uproot.open('scratch/regress.root')['fakedataTree']
+b = uproot.open('scratch/regress_stl.root')['fakedataTree']
+types = {b[k].typename for k in b.keys()}
+print("branches:", len(b.keys()), "| types:", types)
+assert types == {'std::vector<double>'}, types
+worst = max(np.max(np.abs(
+    np.asarray(ak.to_numpy(ak.to_regular(a[k].array())))
+    - np.asarray(ak.to_numpy(ak.to_regular(b[k].array())))))
+    for k in b.keys())
+print("max |uproot - PyROOT| =", worst)
+EOF
+```
+
+**Expect:** `46 branches`, `{'std::vector<double>'}`, `max |uproot - PyROOT| = 0.0`.
+The uproot output has 92 branches for the same 23 dials -- uproot adds an `int32`
+counter (`nmultisigma_fdwgt_*`) it cannot avoid; PyROOT writes the vectors
+directly and needs none.
 
 ## 4. Preflight against real files
 
@@ -196,7 +251,7 @@ Then check `--skip-incomplete` actually produces the reduced set:
 ```
 
 **Expect:** `dropping 3 of 9 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
-t2k_nc1pi)` and `wrote 13 weight branches` (vs 23 for a complete run).
+t2k_nc1pi)` and `wrote 13 cv/ps1 dials` (vs 23 for a complete run).
 
 ## 6. Structural errors: readable, not tracebacks
 

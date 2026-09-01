@@ -50,7 +50,7 @@ BRANCHES = [
 
 @register("mec_bdt")
 class MECBDTCalculator(Calculator):
-    def __init__(self, branch="wgt_mec_bdt", normalize="per-file", norm_scale=None,
+    def __init__(self, branch="fdwgt_mec_bdt", normalize="per-file", norm_scale=None,
                  model=None):
         """normalize: "per-file" (default), "none", or "fixed" with norm_scale."""
         self.branch = branch

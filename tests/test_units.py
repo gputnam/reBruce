@@ -860,3 +860,143 @@ def test_sbruce_errors_are_readable(tmp_path):
         f["Events"] = {"x": np.arange(4, dtype=np.float64)}
     with pytest.raises(SBruceError, match="has no 'SelectedEvents' tree"):
         SBruceFile(other)
+
+
+# ---------------------------------------------------------------------------
+# output: cv/ps1 dial format
+# ---------------------------------------------------------------------------
+
+_DIAL_WEIGHTS = {
+    "fdwgt_alpha": np.array([1.0, 0.5, 1.25, 2.0, 1.0]),
+    "fdwgt_beta": np.array([0.75, 1.0, 1.0, 1.0, 3.5]),
+}
+
+
+def _make_input(tmp_path, n=5):
+    """A minimal stand-in for an sBruce file: SelectedEvents with n entries."""
+    import uproot
+
+    path = str(tmp_path / "in.root")
+    with uproot.recreate(path) as f:
+        f.mktree("SelectedEvents", {"cvwgt": np.float64}, title="t")
+        f["SelectedEvents"].extend({"cvwgt": np.ones(n)})
+    return path
+
+
+def _read_dials(path):
+    """{branch: (knots, sigma)} as float64 (n, 2) arrays, either writer."""
+    import awkward as ak
+    import uproot
+
+    from fakedata.output import SIGMA_SUFFIX
+
+    out = {}
+    with uproot.open(path) as f:
+        tree = f["fakedataTree"]
+        for key in tree.keys():
+            if key.endswith(SIGMA_SUFFIX) or key.startswith("n"):
+                continue
+            rows = ak.to_numpy(ak.to_regular(tree[key].array()))
+            sigma = ak.to_numpy(ak.to_regular(tree[key + SIGMA_SUFFIX].array()))
+            out[key] = (np.asarray(rows, np.float64),
+                        np.asarray(sigma, np.float64))
+    return out
+
+
+def test_dial_name_carries_routing_keyword():
+    from fakedata.output import DIAL_PREFIX, dial_name
+
+    assert dial_name("fdwgt_mec_bdt") == "multisigma_fdwgt_mec_bdt"
+    # MakesBruceNew.C routes weight branches on this substring
+    assert "multisigma" in DIAL_PREFIX
+    assert "multisigma" in dial_name("fdwgt_mec_bdt")
+
+
+def test_build_dials_puts_cv_first():
+    from fakedata.output import build_dials
+
+    dials = build_dials(_DIAL_WEIGHTS, 5)
+    assert set(dials) == {"multisigma_fdwgt_alpha", "multisigma_fdwgt_beta"}
+    for name, block in dials.items():
+        assert block.shape == (5, 2)
+        assert np.all(block[:, 0] == 1.0)
+    np.testing.assert_array_equal(dials["multisigma_fdwgt_alpha"][:, 1],
+                                  _DIAL_WEIGHTS["fdwgt_alpha"])
+
+
+def test_write_output_dial_format(tmp_path):
+    import uproot
+
+    from fakedata.output import write_output
+
+    n = 5
+    src = _make_input(tmp_path, n)
+    dst = str(tmp_path / "out.root")
+    write_output(src, dst, _DIAL_WEIGHTS, n)
+
+    with uproot.open(dst) as f:
+        # the copied trees survive untouched
+        assert f["SelectedEvents"].num_entries == n
+        tree = f["fakedataTree"]
+        assert tree.num_entries == n
+        keys = set(tree.keys())
+    # the flat scalar branches are gone -- replaced, not kept alongside
+    assert not any(k.startswith("fdwgt_") for k in keys)
+    assert {"multisigma_fdwgt_alpha", "multisigma_fdwgt_alpha_sigma",
+            "multisigma_fdwgt_beta", "multisigma_fdwgt_beta_sigma"} <= keys
+
+    dials = _read_dials(dst)
+    assert set(dials) == {"multisigma_fdwgt_alpha", "multisigma_fdwgt_beta"}
+    for branch, weights in _DIAL_WEIGHTS.items():
+        knots, sigma = dials["multisigma_" + branch]
+        assert np.all(sigma == np.array([0.0, 1.0]))     # cv, ps1
+        assert np.all(knots[:, 0] == 1.0)                # cv is always 1
+        np.testing.assert_array_equal(knots[:, 1], weights)
+
+
+def test_write_output_rejects_bad_weights(tmp_path):
+    from fakedata.output import write_output
+
+    n = 5
+    src = _make_input(tmp_path, n)
+    dst = str(tmp_path / "bad.root")
+
+    with pytest.raises(ValueError, match="expected 5"):
+        write_output(src, dst, {"fdwgt_x": np.ones(4)}, n)
+
+    w = np.ones(n)
+    w[2] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        write_output(src, dst, {"fdwgt_x": w}, n)
+
+
+def test_write_output_stl_vectors(tmp_path):
+    """--stl-vectors writes real std::vector<double>, same values as uproot."""
+    import uproot
+
+    pytest.importorskip("ROOT")
+    from fakedata.output import write_output
+
+    n = 5
+    src = _make_input(tmp_path, n)
+    plain = str(tmp_path / "plain.root")
+    stl = str(tmp_path / "stl.root")
+    write_output(src, plain, _DIAL_WEIGHTS, n)
+    write_output(src, stl, _DIAL_WEIGHTS, n, stl_vectors=True)
+
+    with uproot.open(stl) as f:
+        assert f["SelectedEvents"].num_entries == n
+        tree = f["fakedataTree"]
+        assert tree.num_entries == n
+        # no counter branches: PyROOT writes the vectors directly
+        assert set(tree.keys()) == {
+            "multisigma_fdwgt_alpha", "multisigma_fdwgt_alpha_sigma",
+            "multisigma_fdwgt_beta", "multisigma_fdwgt_beta_sigma"}
+        for key in tree.keys():
+            assert tree[key].typename == "std::vector<double>"
+
+    a, b = _read_dials(plain), _read_dials(stl)
+    assert set(a) == set(b)
+    for name in a:
+        np.testing.assert_array_equal(a[name][0], b[name][0])
+        np.testing.assert_array_equal(a[name][1], b[name][1])
