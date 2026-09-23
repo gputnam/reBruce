@@ -686,7 +686,7 @@ def _full_branch_stub(n=8, **overrides):
 
 def test_every_registered_calculator_declares_branches():
     calcs = _all_calcs()
-    assert len(calcs) == 9
+    assert len(calcs) == 11
     for c in calcs:
         b = c.branches_needed()
         assert isinstance(b, list) and b, c.type_name
@@ -751,6 +751,7 @@ class _RecordingSBruce(_StubSBruce):
     "mec_bdt", "qe_zexp_mva_to_lqcd", "pi_fsi_ha2025",
     "jaesung_lowq2_pi_enhancement", "ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi",
     "t2k_nc1pi", "minerva_3dqelike",
+    "flux_horn_current", "flux_hadron_production",
 ])
 def test_compute_reads_only_declared_branches(type_name):
     """The anti-drift test: what compute() loads must be what it declares.
@@ -813,14 +814,15 @@ def test_check_branches_reports_missing_in_declared_order():
 
 
 def test_check_branches_cvwgt_blocks_nearly_everything():
-    """cvwgt is read by every calculator except the three that need no
+    """cvwgt is read by every calculator except the five that need no
     per-file normalization or W-tercile population."""
     from fakedata.calculator import blocked, check_branches
 
     report = check_branches(_drop("cvwgt"), _all_calcs())
     runnable = {c.type_name for c, missing in report if not missing}
     assert runnable == {"pi_fsi_ha2025", "jaesung_lowq2_pi_enhancement",
-                        "qe_zexp_mva_to_lqcd"}
+                        "qe_zexp_mva_to_lqcd", "flux_horn_current",
+                        "flux_hadron_production"}
     assert len(blocked(report)) == 6
 
 
@@ -834,7 +836,7 @@ def test_format_branch_report_names_branches_and_calculators():
     assert "MISSING" in txt
     assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
     assert "qe_zexp_mva_to_lqcd" in txt
-    assert "blocked calculators (4 of 9)" in txt
+    assert "blocked calculators (4 of 11)" in txt
     assert "/some/file.root" in txt
 
     ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")
@@ -1000,3 +1002,149 @@ def test_write_output_stl_vectors(tmp_path):
     for name in a:
         np.testing.assert_array_equal(a[name][0], b[name][0])
         np.testing.assert_array_equal(a[name][1], b[name][1])
+
+
+# ---------------------------------------------------------------------------
+# flux maps (horn current, hadron production) and the test shim
+# ---------------------------------------------------------------------------
+
+def _flux_stub(pdg, E, parent, px, py, pz):
+    f32 = lambda x: np.asarray(x, dtype=np.float32)  # noqa: E731
+    return _StubSBruce({
+        "true_pdg": np.asarray(pdg, dtype=np.int32), "true_E": f32(E),
+        "true_parent_pdg": np.asarray(parent, dtype=np.int32),
+        "true_parent_dcy_mom_x": f32(px), "true_parent_dcy_mom_y": f32(py),
+        "true_parent_dcy_mom_z": f32(pz)})
+
+
+def test_binned_map_clamps_every_axis():
+    from fakedata.fluxmap import BinnedMap
+
+    m = BinnedMap(np.arange(6.0).reshape(2, 3), [[0, 1, 2], [0, 1, 2, 3]])
+    assert m(0.5, 1.5) == 1.0
+    # ROOT convention: bin is [lo, hi)
+    assert m(1.0, 0.0) == 3.0
+    # below / above either axis -> edge bin, never a flow value
+    np.testing.assert_array_equal(m([-5, 9, -5, 9], [-1, -1, 99, 99]),
+                                  [0.0, 3.0, 2.0, 5.0])
+
+
+def test_horn_map_known_cells_and_zero_flow():
+    """Inner bins come from the file; the zero flow bins are never read."""
+    import uproot
+    from fakedata.fluxmap import HORN_PATH, HornCurrentMaps
+
+    maps = HornCurrentMaps()
+    h = uproot.open(HORN_PATH)["piplus/weight2"]
+    v, ep, et = h.values(), h.axes[0].edges(), h.axes[1].edges()
+    assert np.all(h.values(flow=True)[0] == 0)      # why clamping matters
+    # centre of cell (10, 4) along the beam plane
+    p, th = 0.5 * (ep[10] + ep[11]), 0.5 * (et[4] + et[5])
+    w = maps.weight([211], [p * np.sin(th)], [0.0], [p * np.cos(th)])
+    assert w[0] == v[10, 4]
+    # far above the top momentum edge: the edge cell, not 0
+    w = maps.weight([211], [0.0], [0.0], [100.0])
+    assert w[0] == v[-1, 0] and w[0] > 0
+    # unknown parent
+    assert maps.weight([2212], [0.0], [0.0], [2.0])[0] == 1.0
+
+
+def test_hadprod_reproduces_source_readme_value():
+    """First neutrino of the source README's sample-CAF printout."""
+    from fakedata.fluxmap import HadronProductionMaps
+
+    w = HadronProductionMaps().weight([14], [211], [0.946],
+                                      [0.0071], [0.0420], [2.5711])
+    assert w[0] == pytest.approx(1.0153, abs=5e-5)
+
+
+def test_hadprod_map_option():
+    import uproot
+    from fakedata.fluxmap import HADPROD_PATH, HadronProductionMaps
+
+    f = uproot.open(HADPROD_PATH)
+    args = ([14], [211], [1.23], [0.0], [0.0], [2.34])
+    w2 = HadronProductionMaps(map="weight").weight(*args)[0]
+    h2 = f["numu/piplus/weight"]
+    i = np.searchsorted(h2.axes[0].edges(), 1.23, side="right") - 1
+    j = np.searchsorted(h2.axes[1].edges(), 2.34, side="right") - 1
+    assert w2 == h2.values()[i, j]
+    wE = HadronProductionMaps(map="weight_E").weight(*args)[0]
+    assert wE == f["numu/weight_E"].values()[i]
+    with pytest.raises(ValueError):
+        HadronProductionMaps(map="weight4")
+
+
+def test_flux_calculators_domain():
+    """Outside the domain -> exactly 1: unknown parent / flavour, sentinel
+    truth, non-finite momentum; nu_e is left alone by the horn weight."""
+    from fakedata.calculator import REGISTRY
+
+    sb = _flux_stub(
+        pdg=[14, 14, 16, -1, 14, 12, -14],
+        E=[1.0, 1.0, 1.0, -999.0, 1.0, 1.0, 1.0],
+        parent=[211, 2212, 211, -1, 211, 321, -211],
+        px=[0.0, 0.0, 0.0, -999.0, np.nan, 0.0, 0.0],
+        py=[0.0] * 7, pz=[2.3, 2.3, 2.3, -999.0, 2.3, 2.3, 2.3])
+    horn = REGISTRY["flux_horn_current"]().compute(sb)["fdwgt_flux_horn_171p5kA"]
+    sw = REGISTRY["flux_hadron_production"]().compute(sb)[
+        "fdwgt_flux_hadprod_sw_piplus_u387"]
+    for w in (horn, sw):
+        assert np.all(np.isfinite(w))
+        assert w[0] != 1.0 and w[6] != 1.0
+        assert np.all(w[1:5] == 1.0)
+    assert horn[5] == 1.0          # nu_e: horn maps not validated
+    # nu_e from K+: the hadprod map applies (this cell happens to be 1.0)
+    from fakedata.fluxmap import HadronProductionMaps
+    assert sw[5] == HadronProductionMaps().weight(
+        [12], [321], [np.float32(1.0)], [0.0], [0.0], [np.float32(2.3)])[0]
+    horn_all = REGISTRY["flux_horn_current"](flavors=[14, -14, 12, -12])
+    assert horn_all.compute(sb)["fdwgt_flux_horn_171p5kA"][5] != 1.0
+
+
+def test_flux_branch_name_options():
+    from fakedata.calculator import REGISTRY
+
+    c = REGISTRY["flux_horn_current"](parent_pdg_branch="nu_parent_pdg")
+    assert "nu_parent_pdg" in c.branches_needed()
+    assert "true_E" not in c.branches_needed()   # horn has no E axis
+    with pytest.raises(TypeError):
+        REGISTRY["flux_horn_current"](parent_branch="typo")
+
+
+def test_shim_fills_only_missing_branches():
+    from fakedata.shim import DefaultBranchShim
+
+    base = _StubSBruce({"true_pdg": np.array([14, -14, 12, -12, -1]),
+                        "true_E": np.array([0.854, 1.0, 1.0, 1.0, -999.0],
+                                           dtype=np.float32)})
+    sb = DefaultBranchShim(base)
+    assert set(sb.shimmed) == {"true_parent_pdg", "true_parent_dcy_mom_x",
+                               "true_parent_dcy_mom_y",
+                               "true_parent_dcy_mom_z"}
+    a = sb.arrays(["true_parent_pdg", "true_parent_dcy_mom_z", "true_E"])
+    np.testing.assert_array_equal(a["true_parent_pdg"],
+                                  [211, -211, 321, 130, -1])
+    assert a["true_parent_dcy_mom_z"][0] == pytest.approx(2.0, rel=1e-6)
+    assert a["true_parent_dcy_mom_z"][4] == -999.0
+
+    # a real branch is never replaced
+    real = np.full(5, 13, dtype=np.int32)
+    sb = DefaultBranchShim(_StubSBruce({**base._a, "true_parent_pdg": real}))
+    assert "true_parent_pdg" not in sb.shimmed
+    assert sb.array("true_parent_pdg") is real
+
+
+def test_shim_runs_flux_calculators():
+    from fakedata.calculator import REGISTRY
+    from fakedata.shim import DefaultBranchShim
+
+    base = _StubSBruce({"true_pdg": np.array([14, -14, 12, -12, -1]),
+                        "true_E": np.array([0.8, 1.2, 1.0, 1.0, -999.0],
+                                           dtype=np.float32)})
+    sb = DefaultBranchShim(base)
+    for name in ("flux_horn_current", "flux_hadron_production"):
+        calc = REGISTRY[name]()
+        assert all(sb.has_branch(b) for b in calc.branches_needed())
+        (w,) = calc.compute(sb).values()
+        assert np.all(np.isfinite(w)) and w[4] == 1.0 and w[0] != 1.0
