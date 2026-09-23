@@ -20,7 +20,7 @@ Run everything from the repository root
 Parse the skill's free-form argument string as:
 
 - **first positional** — the input folder. Required. If absent, ask for it.
-- **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 9
+- **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 11
   calculators, all W modes; this is what the downstream analysis expects).
 - **`--output DIR`** — defaults to `output/<basename of the input folder>/`.
 - **`--stl-vectors`** — pass it through to `reweight.py` when the user asks for
@@ -177,6 +177,21 @@ Run this on **every** selected file before running any of them. Then:
 Proceed without asking only when the user's free-form context already told you which
 of these they want.
 
+**Known gap: the flux calculators on sBruce schema 20.** `flux_hadron_production`
+and `flux_horn_current` read the neutrino flux ancestry: `true_parent_pdg` and
+`true_parent_dcy_mom_{x,y,z}`. sBruce schema 20 does not export these (see
+MISSING_INFO.md). On such a file, the preflight reports exactly those four branches
+missing and exactly those two calculators blocked.
+
+That is the one incomplete case you may process without asking. Run the files with
+`--skip-incomplete`, and state in the report that the flux dials are absent
+everywhere and why. The outputs then carry 23 dials, and `check_outputs.py`
+tolerates the missing flux dials (it prints `-`). Any *other* missing branch still
+means hold the file back and ask.
+
+**Never pass `--test-shim` in a production run.** It fills those branches with
+non-physical defaults, for testing the code only.
+
 ## 5. Run
 
 Sequentially, one file at a time. Redirect each file's output to a log rather than
@@ -230,9 +245,11 @@ table in your report:
 
 It verifies entry-count match, finite non-negative weights, per-calculator coverage
 and W-mode closure. It hard-codes the default config's branch list, so it only works
-for that config on files where every calculator ran. Skip it — and say why — for any
-other config, and exclude any `--skip-incomplete` outputs from the glob, or it will
-raise a `KeyError` rather than degrade.
+for that config. The two flux dials are optional: when they are absent it prints `-`
+and still checks the rest, so schema-20 outputs with only the flux calculators
+dropped validate normally. Skip it — and say why — for any other config, and exclude
+from the glob any output where `--skip-incomplete` dropped a non-flux calculator, or
+it will raise a `KeyError` rather than degrade.
 
 ## 7. Report
 
@@ -241,8 +258,9 @@ Close with:
 - files processed, and where the outputs are;
 - files skipped, and the reason for each class, including any unreadable ones;
 - the dials written — state the count and confirm every file agrees, listing the
-  names **once** for the set rather than per file (23 dials for the default
-  config, so 46 branches with PyROOT or 92 with uproot, which adds a counter per
+  names **once** for the set rather than per file (25 dials for the default
+  config, or 23 when the flux calculators were dropped on a schema-20 file; that
+  is 50 / 46 branches with PyROOT, or 100 / 92 with uproot, which adds a counter per
   branch), and say which writer ran;
 - the `check_outputs.py` verdict;
 - anything left for the user to decide — `ask` files, incomplete files, large clip

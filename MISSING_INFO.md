@@ -94,7 +94,30 @@ Nieves port rather than reading a stored branch. **Regeneration**: if the
 CV weight is applied to `cvwgt` in future productions, also store it as its
 own branch.
 
-### 8. Duplicate/ambiguous truth blocks (no action needed)
+### 8. Neutrino flux ancestry (parent PDG, parent momentum at decay)
+
+`flux_hadron_production` and `flux_horn_current` look up their weights by
+the parent that decayed to the neutrino. They need that parent's PDG code
+and its momentum at the decay point. sBruce does not export either, although
+the cafpyana CAF loader already reads them (`makedf/branches.py`):
+
+| CAF field | expected sBruce branch |
+|---|---|
+| `rec.mc.nu.parent_pdg` (int) | `true_parent_pdg` |
+| `rec.mc.nu.parent_dcy_mom.{x,y,z}` [GeV/c] | `true_parent_dcy_mom_{x,y,z}` |
+
+`true_pdg` (as initpdg) and `true_E` are already present. The branch names
+are calculator options, so a different naming can be set in the config.
+
+**Placeholder**: none for physics. Schema-20 files are run with
+`--skip-incomplete`, which omits both flux dials. `--test-shim` fills the
+branches with non-physical defaults (`fakedata/shim.py`) for testing the
+code only.
+
+**Regeneration**: export the four fields for the matched neutrino as float
+(momenta) and int (PDG), with the usual -999 / -1 sentinels.
+
+### 9. Duplicate/ambiguous truth blocks (no action needed)
 
 `true_genie_mode` (int16, -1 sentinel) vs `genie_mode` (float, -999);
 `nu_E` vs `true_E` vs `genie_Enu`. The reweighter uses `genie_mode` for

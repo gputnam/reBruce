@@ -7,6 +7,9 @@ For every output/*_fakedata.root:
     knot identically 1.0, with the fake-data weight on the ps1 knot
   - all weights finite and >= 0
   - per-calculator coverage (fraction of events with weight != 1)
+  - the flux dials (FLUX_CALCS) are optional: sBruce schema 20 lacks their
+    input branches, so a --skip-incomplete output omits them ("-" column);
+    they are checked like the others when present
   - W-mode closure: sum(cvwgt * w_mode) == sum(cvwgt * w_nominal) exactly,
     UNLESS the mode clipped tercile weights to the WEIGHT_CLIP range
     (default [0, 10]), in which case the total differs from nominal by the
@@ -37,11 +40,14 @@ ALL_CALCS = ["fdwgt_mec_bdt", "fdwgt_qe_zexp_mva_to_lqcd",
              "fdwgt_jaesung_lowq2_pi_enhancement_prefsi",
              ] + XSEC_CALCS + ["fdwgt_minerva_3dqelike_bnb",
                             "fdwgt_minerva_3dqelike_bnb_pzmarg"]
+FLUX_CALCS = ["fdwgt_flux_hadprod_sw_piplus_u387", "fdwgt_flux_horn_171p5kA"]
 
 
 def _short(branch):
     """5-char column label for the coverage table."""
     parts = branch.split("_")
+    if parts[1] == "flux":
+        return parts[2][:5]
     # branches that differ only in their last part are labelled by it
     return (parts[-1][:5]
             if parts[-1] in ("pzmarg", "bnb", "postfsi", "prefsi")
@@ -77,6 +83,14 @@ def check_file(fn, tol_clip=1e-3):
         ok &= grid_ok
         ok &= bool(np.all(np.isfinite(w)) and np.all(w >= 0))
         fracs[b] = 100.0 * np.mean(w != 1.0)
+    for b in FLUX_CALCS:
+        if dial_name(b) not in fd:
+            fracs[b] = None
+            continue
+        w, grid_ok = _ps1(fd, b)
+        ok &= grid_ok
+        ok &= bool(np.all(np.isfinite(w)) and np.all(w >= 0))
+        fracs[b] = 100.0 * np.mean(w != 1.0)
 
     n_clip = 0
     max_resid = 0.0
@@ -106,14 +120,15 @@ def main(pattern="output/*_fakedata.root"):
         print(f"no files match {pattern}")
         return 1
     print(f"{'file':44s} {'evts':>6} " +
-          " ".join(f"{_short(b):>5}" for b in ALL_CALCS) +
+          " ".join(f"{_short(b):>5}" for b in ALL_CALCS + FLUX_CALCS) +
           f" {'clip':>5} {'resid':>8}  status")
     n_bad = 0
     for fn in files:
         ok, n, fracs, n_clip, resid = check_file(fn)
         n_bad += not ok
         print(f"{os.path.basename(fn):44s} {n:>6} " +
-              " ".join(f"{fracs[b]:5.1f}" for b in ALL_CALCS) +
+              " ".join(f"{fracs[b]:5.1f}" if fracs[b] is not None
+                       else f"{'-':>5}" for b in ALL_CALCS + FLUX_CALCS) +
               f" {n_clip:>5} {resid:8.1e}  " + ("OK" if ok else "FAIL"))
     print(f"\n{len(files)} files, {n_bad} failures")
     return 1 if n_bad else 0

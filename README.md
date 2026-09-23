@@ -80,6 +80,16 @@ drops the calculators whose branches are absent and runs the rest -- useful
 for older sBruce schemas, at the cost of an output with fewer weight
 branches than its siblings.
 
+`--test-shim` is for **testing only**. The flux calculators need the
+neutrino's flux ancestry (`true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}`),
+which sBruce schema 20 does not export. The flag fills those branches, only
+where the file lacks them, with non-physical defaults (`fakedata/shim.py`):
+one parent per flavour, moving along the beam with `p = true_E / 0.427`.
+Every calculator then runs and the full lookup path is exercised. The flux
+weights produced this way are not a flux variation, so never feed them to a
+fit. Without the flag, a schema-20 file fails the preflight on those four
+branches; use `--skip-incomplete` to run the other nine calculators.
+
 `--stl-vectors` writes the dials as genuine `std::vector<double>` branches
 using PyROOT. That is the type PROfit's `SetBranchAddress` binds to
 (`PROcreate.cxx`, `eweight_type = double`), so it is what a file destined for a
@@ -121,6 +131,10 @@ calculators:
   - type: t2k_nc1pi       # single 2D (p_pi, cos_theta_pi) measurement
   - type: minerva_3dqelike                  # 2 branches: 3D + p_z-marginalized
     pz_ref: LE                              # default; p_z scaling reference
+  - type: flux_hadron_production            # SW pi+ universe 387
+    map: weight3                            # default: (E_nu, |p|, theta)
+  - type: flux_horn_current                 # 174 -> 171.5 kA
+    flavors: [14, -14]                      # default: nu_mu, nu_mu-bar only
 ```
 
 Each calculator declares the `SelectedEvents` branches it reads in
@@ -387,6 +401,59 @@ is on CH, so applying it to argon assumes the discrepancy transfers.
 
 [arXiv:2606.00745]: https://arxiv.org/abs/2606.00745
 
+### Flux calculators: `flux_hadron_production` and `flux_horn_current`
+
+| calc | branch | variation |
+|---|---|---|
+| `flux_hadron_production` | `fdwgt_flux_hadprod_sw_piplus_u387` | Sanford-Wang pi+ production, universe 387 |
+| `flux_horn_current` | `fdwgt_flux_horn_171p5kA` | BNB horn current 174 kA (CV) -> 171.5 kA |
+
+Both are BNB flux variations looked up in maps binned in the neutrino's
+**flux ancestry**. A flux variation changes the population of decaying
+parents, so the weight depends on the parent (its PDG code, and |p| and
+theta = atan2(p_T, p_z) of its momentum at the decay point), not on the
+detector. The same maps therefore serve SBND and ICARUS. Parents with a
+map: pi+-, K+-, K0L, mu+-. Any other parent, a slice with no truth
+neutrino, and a flavour with no map all get weight 1. The two map files
+are committed unchanged in `data/` (provenance in `data/README.md`) and
+are read with uproot by `fakedata/fluxmap.py`.
+
+**`flux_hadron_production`**: `w = <flavor>/<parent>/weight3(E_nu, |p|, theta)`.
+`map: weight` drops theta and `map: weight_E` keeps E_nu only; the map
+authors recommend `weight3`. This is one throw of the pi+ production
+uncertainty, not a +1 sigma shift. The nu_mu / pi+ map averages about 0.8,
+so it is a large normalization change as well as a shape change.
+
+**`flux_horn_current`**: `w = <parent>/weight2(|p|, theta)`. The maps have
+no flavour axis, but they are **validated for nu_mu only**:
+- nu_mu closure is 0.1% per bin on SBND and ICARUS;
+- nu_mu-bar has about 1% per-bin rms;
+- nu_e and nu_e-bar fail on statistics, because their parents are ~0.3% of
+  the decays in the flux files.
+
+It is therefore applied to `flavors: [14, -14]` by default. The raw maps
+reach about 100 in low-statistics mu+- cells, and the driver's weight clip
+bounds those. The map file stores zero under/overflow bins, so the lookup
+clamps into the edge bins. The hadron-production maps store the edge values
+in their flow bins, so the same clamp reproduces them. Both lookups agree
+exactly with the map authors' C++ (`horn_caf_weight.h`, `sw_caf_weight.h`)
+on 20k random and edge-case points.
+
+**Variables needed for a meaningful weight.** Each variable is taken per
+matched true neutrino. The sBruce branch names are the defaults of
+constructor options, so another schema can be mapped in the config:
+
+| CAF field | sBruce branch (option) | used by |
+|---|---|---|
+| `rec.mc.nu.parent_pdg` | `true_parent_pdg` (`parent_pdg_branch`) | both |
+| `rec.mc.nu.parent_dcy_mom.{x,y,z}` [GeV/c] | `true_parent_dcy_mom_{x,y,z}` (`parent_p{x,y,z}_branch`) | both |
+| `rec.mc.nu.initpdg` (or `.pdg`) | `true_pdg` (`pdg_branch`) | both |
+| `rec.mc.nu.E` [GeV] | `true_E` (`energy_branch`) | hadron production |
+
+**sBruce schema 20 has none of the four parent branches** (see
+MISSING_INFO.md). On those files the flux calculators are blocked by the
+preflight, and run only under `--test-shim`.
+
 ## Weight clip
 
 Every produced weight branch is clipped to the module-level configuration
@@ -447,7 +514,8 @@ reweight.py            driver (--check-branches preflight; the header
                        annotates all assumed TBranches)
 fakedata/              package: sbruce I/O, output writer, physics modules
 fakedata/calculators/  the weight calculators
-data/                  BDT model + measurement weight tables (provenance inside)
+data/                  BDT model, measurement weight tables, flux weight maps
+                       (provenance in data/README.md)
 configs/               example configs
 tests/                 pytest unit tests
 validation/            validation scripts (Nieves vs stored GENIE weights)

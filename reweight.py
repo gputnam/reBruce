@@ -18,7 +18,7 @@ type="spline" allowlist entries.
 Usage:
     ./venv/bin/python reweight.py <config.yaml> [--input FILE] [--output FILE]
                                   [--check-branches] [--skip-incomplete]
-                                  [--stl-vectors]
+                                  [--stl-vectors] [--test-shim]
 
 --input/--output override the config's input/output entries (useful for
 running one config over many files). --check-branches is a dry run that only
@@ -26,6 +26,9 @@ verifies the input has every branch the configured calculators declare;
 --skip-incomplete drops the calculators whose branches are absent and runs
 the rest (for older sBruce schemas). --stl-vectors writes the dials as real
 std::vector<double> branches with PyROOT (see fakedata/output.py).
+--test-shim (TESTING ONLY) fills the flux-ancestry branches a file lacks with
+non-physical defaults (fakedata/shim.py) so the flux calculators can be
+exercised on sBruce schema 20; its flux weights are not a flux variation.
 
 ================================================================================
 TBranches of SelectedEvents ASSUMED PRESENT by the reweighting code
@@ -75,6 +78,14 @@ Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
                                         SPP photon veto)
     true_np, true_npi, true_npi0        final-state particle counts
 
+Flux ancestry (flux_horn_current, flux_hadron_production) -- NOT in sBruce
+schema 20; see MISSING_INFO.md. Branch names are calculator options:
+    true_E                      true neutrino energy [GeV] (rec.mc.nu.E;
+                                hadron production only)
+    true_parent_pdg             int; neutrino parent PDG (rec.mc.nu.parent_pdg)
+    true_parent_dcy_mom_{x,y,z} parent momentum at its decay point, beam
+                                coordinates [GeV/c] (rec.mc.nu.parent_dcy_mom)
+
 Friend tree multisigmaTree (OPTIONAL -- not read by any calculator):
     multisigma_ZExpPCAWeighter_SBN_v3_MvA_b1 (+ _sigma)
                                 stored GENIE deuterium->MINERvA axial-FF
@@ -99,13 +110,15 @@ import yaml
 from fakedata import ReBruceError, calculator
 from fakedata.output import dial_name, write_output
 from fakedata.sbruce import SBruceFile
+from fakedata.shim import DefaultBranchShim
 
 # importing the package registers all calculators
 import fakedata.calculators  # noqa: F401
 
 
 def run(config, input_path=None, output_path=None,
-        check_only=False, skip_incomplete=False, stl_vectors=False):
+        check_only=False, skip_incomplete=False, stl_vectors=False,
+        test_shim=False):
     input_path = input_path or config["input"]
     output_path = output_path or config.get("output")
     if output_path is None:
@@ -122,6 +135,12 @@ def run(config, input_path=None, output_path=None,
 
     weights = {}
     with SBruceFile(input_path) as sbruce:
+        if test_shim:
+            sbruce = DefaultBranchShim(sbruce)
+            shimmed = ", ".join(sbruce.shimmed) or "(none -- all present)"
+            print(f"[reweight] WARNING --test-shim: default values for "
+                  f"missing branches {shimmed}; weights that depend on them "
+                  f"are a TEST, not physics", flush=True)
         # preflight: fail fast, before any calculator runs, on a file whose
         # schema lacks branches the configured calculators declare
         report = calculator.check_branches(sbruce, calcs)
@@ -203,6 +222,12 @@ def main():
              "Without it the tree is written by uproot, which cannot write "
              "STL vectors and emits a counter branch plus a double[] leaf "
              "array instead. Needs ROOT on PYTHONPATH")
+    ap.add_argument(
+        "--test-shim", action="store_true",
+        help="TESTING ONLY: fill missing flux-ancestry branches "
+             "(true_parent_pdg, true_parent_dcy_mom_*) with non-physical "
+             "defaults so the flux calculators run on sBruce schema 20 "
+             "(see fakedata/shim.py). Never use for production output")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -212,7 +237,7 @@ def main():
         run(config, input_path=args.input, output_path=args.output,
             check_only=args.check_branches,
             skip_incomplete=args.skip_incomplete,
-            stl_vectors=args.stl_vectors)
+            stl_vectors=args.stl_vectors, test_shim=args.test_shim)
     except ReBruceError as e:
         print(f"[reweight] ERROR: {e}", file=sys.stderr)
         return 1

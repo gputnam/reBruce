@@ -26,12 +26,12 @@ reference outputs are gone, skip step 3 and say so rather than silently passing.
 ./venv/bin/python -m pytest tests/ -q
 ```
 
-**Expect:** all pass. As of the cv/ps1 dial change this is **80 tests** (55 original
-+ 20 branch-declaration/preflight tests + 5 output-format tests). A drop in count
-means tests were lost, not that things got faster.
+**Expect:** all pass. As of the flux calculators this is **90 tests** (55 original
++ 20 branch-declaration/preflight tests + 5 output-format tests + 10 flux-map /
+shim tests). A drop in count means tests were lost, not that things got faster.
 
 `test_write_output_stl_vectors` is skipped unless PyROOT is importable
-(`export PYTHONPATH=$(root-config --libdir)`); a run reporting `79 passed,
+(`export PYTHONPATH=$(root-config --libdir)`); a run reporting `89 passed,
 1 skipped` means ROOT was not on the path, not that anything is wrong.
 
 The highest-value test in that set is `test_compute_reads_only_declared_branches`:
@@ -74,7 +74,9 @@ EOF
 | `ub_cc1p0pi` | 20 |
 | `ub_cc2p0pi` | 20 |
 | `ub_ccpi` | 24 |
-| **union** | **51** |
+| `flux_hadron_production` | 6 |
+| `flux_horn_current` | 5 |
+| **union** | **56** |
 
 plus `True | True` on the last line. `ub_cc1p0pi(divide_out_ff=True)` is 31.
 
@@ -84,13 +86,16 @@ calculator changing.
 ## 3. Regression: weights must not drift
 
 The refactor was meant to be behaviour-preserving. Reproduce one file and diff it
-against a known-good output.
+against a known-good output. sBruce schema 20 has no flux-ancestry branches, so the
+two flux calculators are dropped with `--skip-incomplete` here; they are checked
+in 3c.
 
 ```bash
 D=/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
 mkdir -p scratch
 ./venv/bin/python reweight.py configs/all_calculators.yaml \
-  --input $D/SBNDMCCV_12_sbruce.root --output scratch/regress.root >/dev/null
+  --input $D/SBNDMCCV_12_sbruce.root --output scratch/regress.root \
+  --skip-incomplete >/dev/null
 
 ./venv/bin/python - <<'EOF'
 import awkward as ak, numpy as np, uproot
@@ -142,7 +147,7 @@ Skip this step if `import ROOT` fails.
 ```bash
 ./venv/bin/python reweight.py configs/all_calculators.yaml \
   --input $D/SBNDMCCV_12_sbruce.root --output scratch/regress_stl.root \
-  --stl-vectors >/dev/null
+  --skip-incomplete --stl-vectors >/dev/null
 
 ./venv/bin/python - <<'EOF'
 import awkward as ak, numpy as np, uproot
@@ -164,6 +169,38 @@ The uproot output has 92 branches for the same 23 dials -- uproot adds an `int32
 counter (`nmultisigma_fdwgt_*`) it cannot avoid; PyROOT writes the vectors
 directly and needs none.
 
+### 3c. Flux calculators through the test shim
+
+The flux maps need the neutrino-parent branches that sBruce schema 20 lacks.
+`--test-shim` fills those branches with non-physical defaults (`fakedata/shim.py`),
+so this check tests plumbing and lookup only.
+
+```bash
+./venv/bin/python reweight.py configs/all_calculators.yaml \
+  --input $D/SBNDMCCV_12_sbruce.root --output scratch/shim.root --test-shim \
+  2>&1 | grep -E "WARNING|flux|wrote" | cut -c1-120
+./venv/bin/python validation/check_outputs.py scratch/shim.root | tail -3
+./venv/bin/python validation/check_outputs.py scratch/regress.root | tail -3
+```
+
+**Expect:**
+- the `WARNING --test-shim` line naming the four `true_parent_*` branches;
+- both flux calculators weighting about 96% of events;
+- `wrote 25 cv/ps1 dials`;
+- `check_outputs.py` OK on both files, with the `hadpr`/`horn` columns filled
+  for `shim.root` and shown as `-` for `regress.root`.
+
+The other 23 dials in `shim.root` must be bit-identical to `regress.root`, because
+the shim only adds branches.
+
+When the map files or `fakedata/fluxmap.py` change, re-run the exact cross-check
+against the source C++:
+1. Copy `horn_caf_weight.h` and `sw_caf_weight.h` from
+   `sbndgpvm04:/pnfs/sbn/persistent/users/kplows/fake_data/flux/` (read only).
+2. Evaluate them with ROOT on random and edge-case points.
+3. Compare with `HornCurrentMaps` / `HadronProductionMaps` (all three `map`
+   options). Expect 0 mismatches. The first run found 0 in 20k points.
+
 ## 4. Preflight against real files
 
 ```bash
@@ -175,9 +212,13 @@ D=/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
 ```
 
 **Expect:**
-- CV file: `9 calculators, 51 distinct branches, all present`, `exit=0`.
-- Off-beam data: `30 MISSING`, `blocked calculators (9 of 9)`,
-  `runnable calculators (0 of 9): (none)`, `exit=1`, and the error line ends
+- CV file: `11 calculators, 56 distinct branches, 4 MISSING` -- exactly
+  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (2 of 11)`
+  (the two flux calculators), `exit=1`, ending `run the other 9`. With
+  `--test-shim` appended: a WARNING naming those four branches, then `all present`,
+  `exit=0`.
+- Off-beam data: `35 MISSING`, `blocked calculators (11 of 11)`,
+  `runnable calculators (0 of 11): (none)`, `exit=1`, and the error line ends
   `no calculator can run on this file`.
 
 The off-beam file is a genuine missing-branch case in the real production — it has
@@ -221,9 +262,11 @@ open('scratch/fake_hdf5_sbruce.root', 'wb').write(b'\x89HDF\r\n\x1a\n' + b'\x00'
 print("scratch/no_tree.root, scratch/fake_hdf5_sbruce.root")
 EOF
 
+# --test-shim fills the flux-ancestry gap every schema-20 file has, so each fixture
+# shows only the branches it deliberately dropped
 for f in good drop_cpi drop_prefsi_n drop_cvwgt; do
   echo "===== $f ====="
-  ./venv/bin/python reweight.py configs/all_calculators.yaml \
+  ./venv/bin/python reweight.py configs/all_calculators.yaml --test-shim \
     --input scratch/${f}_sbruce.root --check-branches 2>&1 \
     | grep -E "branch check|blocked calculators|ERROR|OK,"
 done
@@ -234,9 +277,12 @@ done
 | fixture | missing | blocked | note |
 |---|---|---|---|
 | `good` | 0 | — | `all present`, exit 0 |
-| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 9** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
-| `drop_prefsi_n` | 3 | **1 of 9** | `qe_zexp_mva_to_lqcd` only |
-| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 9** | the 3 survivors read no `cvwgt` |
+| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 11** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
+| `drop_prefsi_n` | 3 | **1 of 11** | `qe_zexp_mva_to_lqcd` only |
+| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 11** | the 5 survivors (incl. both flux calculators) read no `cvwgt` |
+
+Without `--test-shim`, each row also shows the 4 parent branches missing and
+both flux calculators blocked (for example `drop_cvwgt` becomes 8 of 11).
 
 Each failing case must end with a remedy, e.g.
 `re-run with --skip-incomplete to drop them and run the other 6`. A diagnosis with
@@ -247,11 +293,11 @@ Then check `--skip-incomplete` actually produces the reduced set:
 ```bash
 ./venv/bin/python reweight.py configs/all_calculators.yaml \
   --input scratch/drop_cpi_sbruce.root --output scratch/partial.root \
-  --skip-incomplete 2>&1 | grep -E "dropping|wrote"
+  --skip-incomplete --test-shim 2>&1 | grep -E "dropping|wrote"
 ```
 
-**Expect:** `dropping 3 of 9 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
-t2k_nc1pi)` and `wrote 13 cv/ps1 dials` (vs 23 for a complete run).
+**Expect:** `dropping 3 of 11 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
+t2k_nc1pi)` and `wrote 15 cv/ps1 dials` (vs 25 for a complete run).
 
 ## 6. Structural errors: readable, not tracebacks
 
@@ -284,8 +330,14 @@ whether they had to `cat` the file — see the caveat at the bottom.
 
 Expect 20 CV files selected (13 `SBNDMCCV_*`, 3 `ICARUSRun2_SpringMCOverlay_rewgt_*`,
 4 `ICARUSRun4_SpringMCOverlay_rewgt_*`); dirt / off-beam / unblind skipped;
-`SBND_SpringLowEMC_sbruce.root` raised as `ask`; outputs in
-`output/sbn-rewgted-20/`; `check_outputs.py` → **20 files, 0 failures**. Each file
+`SBND_SpringLowEMC_sbruce.root` raised as `ask`.
+
+The preflight should flag every CV file as missing the 4 `true_parent_*` branches
+and blocking only the two flux calculators. The agent should recognise that as the
+known schema-20 gap described in SKILL.md, and proceed with `--skip-incomplete`
+(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 23 dials each,
+and `check_outputs.py` should give **20 files, 0 failures**, with `-` in the flux
+columns. Each file
 takes well under a second, so the whole run is seconds, not minutes.
 
 **(b) Negative path** — `/reweight-sbruce /Users/gputnam/Work/osc/sbn-rewgted-21`
@@ -340,7 +392,7 @@ mv venv venv.orig
 ./venv/bin/python -c "import numpy" 2>&1 | tail -1     # expect: No such file or directory
 python3 -m venv venv && ./venv/bin/pip install -q -r requirements.txt
 ./venv/bin/python -c "import numpy, uproot, awkward, yaml" && echo ENV_OK
-./venv/bin/python -m pytest tests/ -q                  # expect 75 passed
+./venv/bin/python -m pytest tests/ -q                  # expect 90 passed
 rm -rf venv && mv venv.orig venv                       # restore the known-good venv
 ./venv/bin/python -c "import uproot; print(uproot.__version__)"
 ```
