@@ -12,6 +12,12 @@ calculators:
   - type: ub_ccpi             # default variable: PionMomentum
   - type: t2k_nc1pi           # single 2D (p_pi, cos_theta_pi) measurement
   - type: minerva_3dqelike    # 3D (p_z, p_T, SumT_p) + p_z-marginalized branch
+  # 3+1 sterile nu_mu disappearance (nu_mu + nu_mu-bar, CC and NC) at
+  # IceCube PRL 133 201804 (2024) points, L fixed at 110 m for SBND and ICARUS:
+  #   dm2lo   dm2 =  2.07 eV^2, sin^2(2th24) = 0.116  (95% CL contour, min dm2)
+  #   bestfit dm2 =  3.5  eV^2, sin^2(2th24) = 0.16   (best fit)
+  #   dm2hi   dm2 = 12.1  eV^2, sin^2(2th24) = 0.187  (95% CL contour, max dm2)
+  - type: osc_sterile_ic2024  # 3 branches: _dm2lo, _bestfit, _dm2hi
   # flux variations: need the true_parent_* flux-ancestry branches, absent
   # from sBruce schema 20 (run those files with --skip-incomplete, or with
   # --test-shim to exercise the code on non-physical defaults)

@@ -45,7 +45,14 @@ Event bookkeeping / weights:
 Interaction-level truth:
     genie_mode                  float; 0=QE 1=RES 2=DIS 3=COH 10=MEC, -999 none
     true_isnc                   char; 0=CC, 1=NC, -128 sentinel
-    true_pdg                    int; matched-neutrino PDG (14, -14, ...)
+    true_pdg                    int; matched-neutrino PDG (14, -14, ...),
+                                -1 for a slice without a truth neutrino
+    true_E                      true neutrino energy [GeV] (rec.mc.nu.E;
+                                equal to genie_Enu). Read by
+                                osc_sterile_ic2024 (with true_pdg; the
+                                oscillation baseline is a fixed 110 m, the
+                                `baseline` branch is NOT read) and
+                                flux_hadron_production
 
 GENIE event-record (pre-FSI) kinematics [GeV], -999 when unfilled:
     genie_Enu                   true neutrino energy
@@ -79,9 +86,8 @@ Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
     true_np, true_npi, true_npi0        final-state particle counts
 
 Flux ancestry (flux_horn_current, flux_hadron_production) -- NOT in sBruce
-schema 20; see MISSING_INFO.md. Branch names are calculator options:
-    true_E                      true neutrino energy [GeV] (rec.mc.nu.E;
-                                hadron production only)
+schema 20; see MISSING_INFO.md. Branch names are calculator options (the
+flux calculators also read true_pdg and, hadron production only, true_E):
     true_parent_pdg             int; neutrino parent PDG (rec.mc.nu.parent_pdg)
     true_parent_dcy_mom_{x,y,z} parent momentum at its decay point, beam
                                 coordinates [GeV/c] (rec.mc.nu.parent_dcy_mom)

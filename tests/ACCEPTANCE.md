@@ -76,6 +76,7 @@ EOF
 | `ub_ccpi` | 24 |
 | `flux_hadron_production` | 6 |
 | `flux_horn_current` | 5 |
+| `osc_sterile_ic2024` | 2 |
 | **union** | **56** |
 
 plus `True | True` on the last line. `ub_cc1p0pi(divide_out_ff=True)` is 31.
@@ -121,7 +122,9 @@ def weights(tree):
 
 old = weights(uproot.open('output/SBNDMCCV_12_sbruce_fakedata.root')['fakedataTree'])
 new = weights(uproot.open('scratch/regress.root')['fakedataTree'])
-assert set(old) == set(new), f"branch set changed: {set(old) ^ set(new)}"
+assert set(old) <= set(new), f"branches lost: {set(old) - set(new)}"
+added = sorted(set(new) - set(old))
+if added: print("added (no baseline yet):", added)
 worst = 0.0
 for b in sorted(new):
     a, c = old[b], new[b]
@@ -133,7 +136,10 @@ print("BIT-IDENTICAL" if worst == 0 else "CHANGED -- justify before proceeding")
 EOF
 ```
 
-**Expect:** 23 weights, `max |delta| = 0.000e+00`, `BIT-IDENTICAL`. The cv knot
+**Expect:** 26 weights, `max |delta| = 0.000e+00`, `BIT-IDENTICAL`. Against a
+baseline in `output/` that predates `osc_sterile_ic2024`, also expect `added (no
+baseline yet): ['osc_ic2024_bestfit', 'osc_ic2024_dm2hi', 'osc_ic2024_dm2lo']`
+and 23 compared weights; any other added or lost branch is a failure. The cv knot
 and sigma grid assertions must also hold for every dial.
 
 Any non-zero delta must be explained by an intentional physics change. If you
@@ -164,8 +170,8 @@ print("max |uproot - PyROOT| =", worst)
 EOF
 ```
 
-**Expect:** `46 branches`, `{'std::vector<double>'}`, `max |uproot - PyROOT| = 0.0`.
-The uproot output has 92 branches for the same 23 dials -- uproot adds an `int32`
+**Expect:** `52 branches`, `{'std::vector<double>'}`, `max |uproot - PyROOT| = 0.0`.
+The uproot output has 104 branches for the same 26 dials -- uproot adds an `int32`
 counter (`nmultisigma_fdwgt_*`) it cannot avoid; PyROOT writes the vectors
 directly and needs none.
 
@@ -186,11 +192,11 @@ so this check tests plumbing and lookup only.
 **Expect:**
 - the `WARNING --test-shim` line naming the four `true_parent_*` branches;
 - both flux calculators weighting about 96% of events;
-- `wrote 25 cv/ps1 dials`;
+- `wrote 28 cv/ps1 dials`;
 - `check_outputs.py` OK on both files, with the `hadpr`/`horn` columns filled
   for `shim.root` and shown as `-` for `regress.root`.
 
-The other 23 dials in `shim.root` must be bit-identical to `regress.root`, because
+The other 26 dials in `shim.root` must be bit-identical to `regress.root`, because
 the shim only adds branches.
 
 When the map files or `fakedata/fluxmap.py` change, re-run the exact cross-check
@@ -212,13 +218,13 @@ D=/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
 ```
 
 **Expect:**
-- CV file: `11 calculators, 56 distinct branches, 4 MISSING` -- exactly
-  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (2 of 11)`
-  (the two flux calculators), `exit=1`, ending `run the other 9`. With
+- CV file: `12 calculators, 56 distinct branches, 4 MISSING` -- exactly
+  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (2 of 12)`
+  (the two flux calculators), `exit=1`, ending `run the other 10`. With
   `--test-shim` appended: a WARNING naming those four branches, then `all present`,
   `exit=0`.
-- Off-beam data: `35 MISSING`, `blocked calculators (11 of 11)`,
-  `runnable calculators (0 of 11): (none)`, `exit=1`, and the error line ends
+- Off-beam data: `35 MISSING`, `blocked calculators (12 of 12)`,
+  `runnable calculators (0 of 12): (none)`, `exit=1`, and the error line ends
   `no calculator can run on this file`.
 
 The off-beam file is a genuine missing-branch case in the real production — it has
@@ -277,12 +283,12 @@ done
 | fixture | missing | blocked | note |
 |---|---|---|---|
 | `good` | 0 | — | `all present`, exit 0 |
-| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 11** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
-| `drop_prefsi_n` | 3 | **1 of 11** | `qe_zexp_mva_to_lqcd` only |
-| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 11** | the 5 survivors (incl. both flux calculators) read no `cvwgt` |
+| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 12** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
+| `drop_prefsi_n` | 3 | **1 of 12** | `qe_zexp_mva_to_lqcd` only |
+| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 12** | the 6 survivors (incl. both flux calculators and `osc_sterile_ic2024`) read no `cvwgt` |
 
 Without `--test-shim`, each row also shows the 4 parent branches missing and
-both flux calculators blocked (for example `drop_cvwgt` becomes 8 of 11).
+both flux calculators blocked (for example `drop_cvwgt` becomes 8 of 12).
 
 Each failing case must end with a remedy, e.g.
 `re-run with --skip-incomplete to drop them and run the other 6`. A diagnosis with
@@ -296,8 +302,8 @@ Then check `--skip-incomplete` actually produces the reduced set:
   --skip-incomplete --test-shim 2>&1 | grep -E "dropping|wrote"
 ```
 
-**Expect:** `dropping 3 of 11 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
-t2k_nc1pi)` and `wrote 15 cv/ps1 dials` (vs 25 for a complete run).
+**Expect:** `dropping 3 of 12 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
+t2k_nc1pi)` and `wrote 18 cv/ps1 dials` (vs 28 for a complete run).
 
 ## 6. Structural errors: readable, not tracebacks
 
@@ -335,7 +341,7 @@ Expect 20 CV files selected (13 `SBNDMCCV_*`, 3 `ICARUSRun2_SpringMCOverlay_rewg
 The preflight should flag every CV file as missing the 4 `true_parent_*` branches
 and blocking only the two flux calculators. The agent should recognise that as the
 known schema-20 gap described in SKILL.md, and proceed with `--skip-incomplete`
-(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 23 dials each,
+(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 26 dials each,
 and `check_outputs.py` should give **20 files, 0 failures**, with `-` in the flux
 columns. Each file
 takes well under a second, so the whole run is seconds, not minutes.

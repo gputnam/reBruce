@@ -88,7 +88,7 @@ one parent per flavour, moving along the beam with `p = true_E / 0.427`.
 Every calculator then runs and the full lookup path is exercised. The flux
 weights produced this way are not a flux variation, so never feed them to a
 fit. Without the flag, a schema-20 file fails the preflight on those four
-branches; use `--skip-incomplete` to run the other nine calculators.
+branches; use `--skip-incomplete` to run the other ten calculators.
 
 `--stl-vectors` writes the dials as genuine `std::vector<double>` branches
 using PyROOT. That is the type PROfit's `SetBranchAddress` binds to
@@ -135,6 +135,9 @@ calculators:
     map: weight3                            # default: (E_nu, |p|, theta)
   - type: flux_horn_current                 # 174 -> 171.5 kA
     flavors: [14, -14]                      # default: nu_mu, nu_mu-bar only
+  - type: osc_sterile_ic2024                # 3 branches: _dm2lo/_bestfit/_dm2hi
+    points: [dm2lo, bestfit, dm2hi]         # default: all three
+    baseline_km: 0.110                      # default: SBND, for every file
 ```
 
 Each calculator declares the `SelectedEvents` branches it reads in
@@ -453,6 +456,62 @@ constructor options, so another schema can be mapped in the config:
 **sBruce schema 20 has none of the four parent branches** (see
 MISSING_INFO.md). On those files the flux calculators are blocked by the
 preflight, and run only under `--test-shim`.
+
+### `osc_sterile_ic2024` -> branches `fdwgt_osc_ic2024_{dm2lo,bestfit,dm2hi}`
+
+A 3+1 sterile-neutrino **nu_mu disappearance** at three points IceCube allows.
+The weight is the two-flavour survival probability
+
+    w = 1 - sin^2(2 theta_24) * sin^2(1.267 * dm2_41[eV^2] * L[km] / E[GeV])
+
+**Inputs:**
+- `L` is **fixed at the SBND baseline, 110 m**, for SBND and ICARUS files
+  alike. The per-event `baseline` branch is not read.
+- `E` is the true neutrino energy `true_E`.
+
+**Scope:** every nu_mu and nu_mu-bar event (`|true_pdg| == 14`), **CC and NC**.
+IceCube assumes theta_14 = theta_34 = 0. Then sin^2(2 theta_mumu) =
+sin^2(2 theta_24), and every nu_mu that disappears becomes nu_s, so NC events
+are depleted by the same factor. nu_e / nu_e-bar, slices without a truth
+neutrino, and unfilled `true_E` get weight 1.
+
+**Source:** IceCube, [PRL 133, 201804 (2024)][ic2024], arXiv:2405.08070. This
+is the latest IceCube high-energy nu_mu result:
+- 10.7 years of data;
+- best fit sin^2(2 theta_24) = 0.16, dm2_41 = 3.5 eV^2 (p = 3.1% against no
+  sterile neutrino);
+- a closed 95% CL contour.
+
+**How the contour was read:** no data release exists, so the 95% contour was
+digitized from the vector paths of the paper's Fig. 1. The axes were
+calibrated on the tick marks, and the best-fit marker reproduces the quoted
+best fit. The closed region spans dm2 = 2.07-12.1 eV^2 and sin^2(2 theta_24) =
+0.052-0.348. At each dm2 the point takes the largest allowed mixing; at the two
+dm2 extremes that is the contour's tip. Details are in the module docstring
+(`fakedata/calculators/osc_sterile.py`).
+
+| branch suffix | dm2_41 [eV^2] | sin^2(2 theta_24) | from |
+|---|---|---|---|
+| `_dm2lo` | 2.07 | 0.116 | 95% CL contour, minimum dm2 |
+| `_bestfit` | 3.5 | 0.16 | IceCube best fit |
+| `_dm2hi` | 12.1 | 0.187 | 95% CL contour, maximum dm2 |
+
+Every weight lies in `[1 - sin^2(2 theta_24), 1]`, so the clip never engages.
+On `sbn-rewgted-20` the cvwgt-weighted mean weights are:
+
+| detector | `_dm2lo` | `_bestfit` | `_dm2hi` |
+|---|---|---|---|
+| SBND | 0.980 | 0.935 | 0.902 |
+| ICARUS | 0.984 | 0.945 | 0.880 |
+
+**Options:**
+- `points` takes a list of the labels above, or an explicit
+  `{label: [dm2, s22]}` map;
+- `baseline_km`;
+- `flavors` (default `[14, -14]`);
+- `pdg_branch` / `energy_branch`.
+
+[ic2024]: https://doi.org/10.1103/PhysRevLett.133.201804
 
 ## Weight clip
 

@@ -39,7 +39,10 @@ ALL_CALCS = ["fdwgt_mec_bdt", "fdwgt_qe_zexp_mva_to_lqcd",
              "fdwgt_jaesung_lowq2_pi_enhancement_postfsi",
              "fdwgt_jaesung_lowq2_pi_enhancement_prefsi",
              ] + XSEC_CALCS + ["fdwgt_minerva_3dqelike_bnb",
-                            "fdwgt_minerva_3dqelike_bnb_pzmarg"]
+                            "fdwgt_minerva_3dqelike_bnb_pzmarg",
+                            "fdwgt_osc_ic2024_dm2lo",
+                            "fdwgt_osc_ic2024_bestfit",
+                            "fdwgt_osc_ic2024_dm2hi"]
 FLUX_CALCS = ["fdwgt_flux_hadprod_sw_piplus_u387", "fdwgt_flux_horn_171p5kA"]
 
 
@@ -50,7 +53,8 @@ def _short(branch):
         return parts[2][:5]
     # branches that differ only in their last part are labelled by it
     return (parts[-1][:5]
-            if parts[-1] in ("pzmarg", "bnb", "postfsi", "prefsi")
+            if parts[-1] in ("pzmarg", "bnb", "postfsi", "prefsi",
+                             "dm2lo", "bestfit", "dm2hi")
             else parts[1][:4])
 
 

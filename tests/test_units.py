@@ -686,7 +686,7 @@ def _full_branch_stub(n=8, **overrides):
 
 def test_every_registered_calculator_declares_branches():
     calcs = _all_calcs()
-    assert len(calcs) == 11
+    assert len(calcs) == 12
     for c in calcs:
         b = c.branches_needed()
         assert isinstance(b, list) and b, c.type_name
@@ -751,7 +751,7 @@ class _RecordingSBruce(_StubSBruce):
     "mec_bdt", "qe_zexp_mva_to_lqcd", "pi_fsi_ha2025",
     "jaesung_lowq2_pi_enhancement", "ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi",
     "t2k_nc1pi", "minerva_3dqelike",
-    "flux_horn_current", "flux_hadron_production",
+    "flux_horn_current", "flux_hadron_production", "osc_sterile_ic2024",
 ])
 def test_compute_reads_only_declared_branches(type_name):
     """The anti-drift test: what compute() loads must be what it declares.
@@ -814,7 +814,7 @@ def test_check_branches_reports_missing_in_declared_order():
 
 
 def test_check_branches_cvwgt_blocks_nearly_everything():
-    """cvwgt is read by every calculator except the five that need no
+    """cvwgt is read by every calculator except the six that need no
     per-file normalization or W-tercile population."""
     from fakedata.calculator import blocked, check_branches
 
@@ -822,7 +822,7 @@ def test_check_branches_cvwgt_blocks_nearly_everything():
     runnable = {c.type_name for c, missing in report if not missing}
     assert runnable == {"pi_fsi_ha2025", "jaesung_lowq2_pi_enhancement",
                         "qe_zexp_mva_to_lqcd", "flux_horn_current",
-                        "flux_hadron_production"}
+                        "flux_hadron_production", "osc_sterile_ic2024"}
     assert len(blocked(report)) == 6
 
 
@@ -836,7 +836,7 @@ def test_format_branch_report_names_branches_and_calculators():
     assert "MISSING" in txt
     assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
     assert "qe_zexp_mva_to_lqcd" in txt
-    assert "blocked calculators (4 of 11)" in txt
+    assert "blocked calculators (4 of 12)" in txt
     assert "/some/file.root" in txt
 
     ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")
@@ -1148,3 +1148,68 @@ def test_shim_runs_flux_calculators():
         assert all(sb.has_branch(b) for b in calc.branches_needed())
         (w,) = calc.compute(sb).values()
         assert np.all(np.isfinite(w)) and w[4] == 1.0 and w[0] != 1.0
+
+
+# ---------------------------------------------------------------------------
+# 3+1 sterile nu_mu disappearance (IceCube 2024 points)
+# ---------------------------------------------------------------------------
+
+def test_osc_points_match_documented_table():
+    from fakedata.calculators.osc_sterile import BASELINE_KM, POINTS
+
+    assert POINTS == {"dm2lo": (2.07, 0.116), "bestfit": (3.5, 0.16),
+                      "dm2hi": (12.1, 0.187)}
+    assert BASELINE_KM == 0.110
+
+
+def test_osc_weights_match_formula_and_scope():
+    """nu_mu and nu_mu-bar get P(mu->mu), CC and NC alike; nu_e, no-truth
+    slices and unfilled true_E get exactly 1."""
+    from fakedata.calculators.osc_sterile import POINTS, SterileIceCube2024
+
+    pdg = np.array([14, 14, -14, -14, 12, -12, -1, 14])
+    e = np.array([0.7, 0.7, 0.4, 1.3, 0.7, 0.7, 0.7, -999.0])
+    isnc = np.array([0, 1, 0, 1, 0, 0, -128, 0])
+    sb = _StubSBruce({"true_pdg": pdg, "true_E": e, "true_isnc": isnc})
+    calc = SterileIceCube2024()
+    out = calc.compute(sb)
+    assert set(out) == {f"fdwgt_osc_ic2024_{k}" for k in POINTS}
+    for label, (dm2, s22) in POINTS.items():
+        w = out[f"fdwgt_osc_ic2024_{label}"]
+        exp = 1 - s22 * np.sin(1.267 * dm2 * 0.110 / e[:4]) ** 2
+        np.testing.assert_allclose(w[:4], exp, rtol=0, atol=1e-15)
+        assert w[0] == w[1]                     # CC == NC
+        assert np.all(w[:4] < 1) and np.all(w[:4] >= 1 - s22)
+        assert np.all(w[4:] == 1.0)
+
+
+def test_osc_limits():
+    from fakedata.calculators.osc_sterile import OSC_CONST, numu_survival
+
+    dm2, s22 = 3.5, 0.16
+    assert numu_survival(1e12, dm2, s22) == pytest.approx(1.0, abs=1e-12)
+    e_max = OSC_CONST * dm2 * 0.110 / (np.pi / 2)      # first maximum
+    assert numu_survival(e_max, dm2, s22) == pytest.approx(1 - s22, abs=1e-14)
+
+
+def test_osc_baseline_is_fixed():
+    """The calculator never reads the per-event `baseline` branch: the
+    oscillation is evaluated at 110 m for ICARUS files too."""
+    from fakedata.calculators.osc_sterile import SterileIceCube2024
+
+    calc = SterileIceCube2024()
+    assert "baseline" not in calc.branches_needed()
+    sb = _RecordingSBruce({"true_pdg": np.array([14]),
+                           "true_E": np.array([0.7]),
+                           "baseline": np.array([600.0])},
+                          calc.branches_needed())
+    w = calc.compute(sb)["fdwgt_osc_ic2024_bestfit"][0]
+    assert w == pytest.approx(1 - 0.16 * np.sin(1.267 * 3.5 * 0.110 / 0.7) ** 2)
+
+
+def test_osc_points_option():
+    from fakedata.calculators.osc_sterile import SterileIceCube2024
+
+    assert list(SterileIceCube2024(points=["bestfit"]).points) == ["bestfit"]
+    c = SterileIceCube2024(points={"x": [1.0, 0.1]})
+    assert c.points == {"x": (1.0, 0.1)}

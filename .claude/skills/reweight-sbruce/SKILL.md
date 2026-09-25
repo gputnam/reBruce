@@ -20,7 +20,7 @@ Run everything from the repository root
 Parse the skill's free-form argument string as:
 
 - **first positional** — the input folder. Required. If absent, ask for it.
-- **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 11
+- **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 12
   calculators, all W modes; this is what the downstream analysis expects).
 - **`--output DIR`** — defaults to `output/<basename of the input folder>/`.
 - **`--stl-vectors`** — pass it through to `reweight.py` when the user asks for
@@ -185,7 +185,7 @@ missing and exactly those two calculators blocked.
 
 That is the one incomplete case you may process without asking. Run the files with
 `--skip-incomplete`, and state in the report that the flux dials are absent
-everywhere and why. The outputs then carry 23 dials, and `check_outputs.py`
+everywhere and why. The outputs then carry 26 dials, and `check_outputs.py`
 tolerates the missing flux dials (it prints `-`). Any *other* missing branch still
 means hold the file back and ask.
 
@@ -258,9 +258,9 @@ Close with:
 - files processed, and where the outputs are;
 - files skipped, and the reason for each class, including any unreadable ones;
 - the dials written — state the count and confirm every file agrees, listing the
-  names **once** for the set rather than per file (25 dials for the default
-  config, or 23 when the flux calculators were dropped on a schema-20 file; that
-  is 50 / 46 branches with PyROOT, or 100 / 92 with uproot, which adds a counter per
+  names **once** for the set rather than per file (28 dials for the default
+  config, or 26 when the flux calculators were dropped on a schema-20 file; that
+  is 56 / 52 branches with PyROOT, or 112 / 104 with uproot, which adds a counter per
   branch), and say which writer ran;
 - the `check_outputs.py` verdict;
 - anything left for the user to decide — `ask` files, incomplete files, large clip
