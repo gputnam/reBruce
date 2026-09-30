@@ -13,6 +13,16 @@ Both weights are looked up in maps binned in the neutrino's flux ancestry
       The raw maps reach ~100 in low-statistics mu+- cells; the driver's
       WEIGHT_CLIP bounds those.
 
+  flux_horn_nightmare     horn "nightmare": 174 -> 175.5 kA plus 1% of the
+      current flowing along the Be target (uniform over its 0.476 cm
+      radius, full horn length); otherwise the G4BNB CV
+      w = weight2[parent](|p_parent|, theta_parent), pi+- and K+- only
+      (K0L, mu+- and any other parent: 1). The target current defocuses
+      forward pi-: nu_mu-bar -12% (up to -34% above 1.5 GeV at ICARUS),
+      nu_mu +4%. Validated for nu_mu / nu_mu-bar only; same `flavors`
+      default as flux_horn_current. Map cells need >= 10 effective CV
+      parents; per-event weights span ~0.7-2.4 (pi+ map max 7.9).
+
   flux_hadron_production  Sanford-Wang pi+ production, universe 387
       w = <flavor>/<parent>/weight3(E_nu, |p_parent|, theta_parent)
       (`map` option: 'weight' drops theta, 'weight_E' keeps E_nu only)
@@ -53,7 +63,8 @@ test, not a flux variation.
 import numpy as np
 
 from ..calculator import Calculator, register
-from ..fluxmap import HadronProductionMaps, HornCurrentMaps
+from ..fluxmap import (HORN_NIGHTMARE_PATH, HadronProductionMaps,
+                       HornCurrentMaps)
 from ..sbruce import valid
 
 DEFAULT_BRANCHES = {
@@ -119,6 +130,14 @@ class FluxHornCurrent(_FluxCalculator):
             a["parent_py_branch"][mask], a["parent_pz_branch"][mask])
         self.report_coverage(self.branch, mask & (weights != 1.0), n)
         return {self.branch: weights}
+
+
+@register("flux_horn_nightmare")
+class FluxHornNightmare(FluxHornCurrent):
+    def __init__(self, branch="fdwgt_flux_horn_nightmare", table=None,
+                 flavors=(14, -14), **branch_names):
+        super().__init__(branch, table or HORN_NIGHTMARE_PATH, flavors,
+                         **branch_names)
 
 
 @register("flux_hadron_production")

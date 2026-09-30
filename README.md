@@ -137,6 +137,8 @@ calculators:
     map: weight3                            # default: (E_nu, |p|, theta)
   - type: flux_horn_current                 # 174 -> 171.5 kA
     flavors: [14, -14]                      # default: nu_mu, nu_mu-bar only
+  - type: flux_horn_nightmare               # 175.5 kA + 1% target current
+    flavors: [14, -14]                      # default: nu_mu, nu_mu-bar only
   - type: osc_sterile_ic2024                # 3 branches: _dm2lo/_bestfit/_dm2hi
     points: [dm2lo, bestfit, dm2hi]         # default: all three
     baseline_km: 0.110                      # default: SBND, for every file
@@ -487,20 +489,22 @@ is on CH, so applying it to argon assumes the discrepancy transfers.
 
 [arXiv:2606.00745]: https://arxiv.org/abs/2606.00745
 
-### Flux calculators: `flux_hadron_production` and `flux_horn_current`
+### Flux calculators: `flux_hadron_production`, `flux_horn_current`, `flux_horn_nightmare`
 
 | calc | branch | variation |
 |---|---|---|
 | `flux_hadron_production` | `fdwgt_flux_hadprod_sw_piplus_u387` | Sanford-Wang pi+ production, universe 387 |
 | `flux_horn_current` | `fdwgt_flux_horn_171p5kA` | BNB horn current 174 kA (CV) -> 171.5 kA |
+| `flux_horn_nightmare` | `fdwgt_flux_horn_nightmare` | BNB horn 174 -> 175.5 kA **plus 1% of the current along the Be target** |
 
-Both are BNB flux variations looked up in maps binned in the neutrino's
+All three are BNB flux variations looked up in maps binned in the neutrino's
 **flux ancestry**. A flux variation changes the population of decaying
 parents, so the weight depends on the parent (its PDG code, and |p| and
 theta = atan2(p_T, p_z) of its momentum at the decay point), not on the
 detector. The same maps therefore serve SBND and ICARUS. Parents with a
-map: pi+-, K+-, K0L, mu+-. Any other parent, a slice with no truth
-neutrino, and a flavour with no map all get weight 1. The two map files
+map: pi+-, K+-, K0L, mu+- (pi+- and K+- only for `flux_horn_nightmare`).
+Any other parent, a slice with no truth neutrino, and a flavour with no
+map all get weight 1. The three map files
 are committed unchanged in `data/` (provenance in `data/README.md`) and
 are read with uproot by `fakedata/fluxmap.py`.
 
@@ -525,15 +529,42 @@ in their flow bins, so the same clamp reproduces them. Both lookups agree
 exactly with the map authors' C++ (`horn_caf_weight.h`, `sw_caf_weight.h`)
 on 20k random and edge-case points.
 
+**`flux_horn_nightmare`**: the same `w = <parent>/weight2(|p|, theta)`
+lookup (`HornCurrentMaps`), on a map set from the FocusingAdHoc explorer.
+The varied horn carries 175.5 kA, and 1% of the current flows along the
+beryllium target, spread uniformly over its 0.476 cm radius (field ∝ r
+inside, ∝ 1/r outside) over the full horn length. Everything else is the
+G4BNB CV (EXPI skin depth 1.4 mm, no water, horn aligned). The target
+current defocuses forward pi-, and focuses forward pi+:
+
+| flux ratio varied/CV (map) | 0-0.5 GeV | 0.5-1 | 1-1.5 | 1.5-2 | 2-3 | total |
+|---|---|---|---|---|---|---|
+| SBND nu_mu | 1.005 | 1.038 | 1.088 | 1.091 | 1.053 | 1.039 |
+| SBND nu_mu-bar | 0.940 | 0.788 | 0.750 | 0.793 | 0.816 | 0.883 |
+| ICARUS nu_mu | 1.003 | 1.020 | 1.058 | 1.193 | 1.248 | 1.038 |
+| ICARUS nu_mu-bar | 0.946 | 0.806 | 0.759 | 0.688 | 0.661 | 0.878 |
+
+The map reproduces the re-tracked model to within ~1% or the model MC
+statistics, except -0.6% (SBND nu_mu, 0.5-1 GeV) and -2.4% (ICARUS nu_mu,
+2-3 GeV, on a +28% change). Its author validated it for nu_mu / nu_mu-bar
+only (nu_e muon parents are held at the CV, and their K+- parents are thin),
+so it also defaults to `flavors: [14, -14]`. The per-event weights carry
+the parent-sample MC statistics: cells are merged along |p| until each
+holds >= 10 effective CV parents, and the mean `error2` is ~0.08. This
+full-length, 1% target current is an idealised case; a realistic short of
+the target sleeve has about seven times less effect. The lookup agrees
+exactly with the source `horn_caf_weight.h` (compiled with ROOT 6.36) and
+`apply_horn_weight.py` on 20k random and edge-case points.
+
 **Variables needed for a meaningful weight.** Each variable is taken per
 matched true neutrino. The sBruce branch names are the defaults of
 constructor options, so another schema can be mapped in the config:
 
 | CAF field | sBruce branch (option) | used by |
 |---|---|---|
-| `rec.mc.nu.parent_pdg` | `true_parent_pdg` (`parent_pdg_branch`) | both |
-| `rec.mc.nu.parent_dcy_mom.{x,y,z}` [GeV/c] | `true_parent_dcy_mom_{x,y,z}` (`parent_p{x,y,z}_branch`) | both |
-| `rec.mc.nu.initpdg` (or `.pdg`) | `true_pdg` (`pdg_branch`) | both |
+| `rec.mc.nu.parent_pdg` | `true_parent_pdg` (`parent_pdg_branch`) | all three |
+| `rec.mc.nu.parent_dcy_mom.{x,y,z}` [GeV/c] | `true_parent_dcy_mom_{x,y,z}` (`parent_p{x,y,z}_branch`) | all three |
+| `rec.mc.nu.initpdg` (or `.pdg`) | `true_pdg` (`pdg_branch`) | all three |
 | `rec.mc.nu.E` [GeV] | `true_E` (`energy_branch`) | hadron production |
 
 **sBruce schema 20 has none of the four parent branches** (see

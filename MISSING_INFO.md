@@ -96,7 +96,8 @@ own branch.
 
 ### 8. Neutrino flux ancestry (parent PDG, parent momentum at decay)
 
-`flux_hadron_production` and `flux_horn_current` look up their weights by
+`flux_hadron_production`, `flux_horn_current` and `flux_horn_nightmare`
+look up their weights by
 the parent that decayed to the neutrino. They need that parent's PDG code
 and its momentum at the decay point. sBruce does not export either, although
 the cafpyana CAF loader already reads them (`makedf/branches.py`):
@@ -110,7 +111,7 @@ the cafpyana CAF loader already reads them (`makedf/branches.py`):
 are calculator options, so a different naming can be set in the config.
 
 **Placeholder**: none for physics. Schema-20 files are run with
-`--skip-incomplete`, which omits both flux dials. `--test-shim` fills the
+`--skip-incomplete`, which omits the three flux dials. `--test-shim` fills the
 branches with non-physical defaults (`fakedata/shim.py`) for testing the
 code only.
 

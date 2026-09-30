@@ -3,11 +3,14 @@
 A flux variation changes the population of decaying parent hadrons, so its
 weight is looked up from the parent: its PDG code and its momentum at the
 decay point (|p| and the angle theta to the beam axis), plus -- for the
-hadron-production maps -- the neutrino flavour and energy. Two map files
+hadron-production maps -- the neutrino flavour and energy. Three map files
 (data/, provenance in data/README.md):
 
   flux_horn_171p5kA_weight_maps.root   horn current 174 -> 171.5 kA
       <parent>/weight2              TH2D  x = |p| [GeV/c], y = theta [rad]
+  flux_horn_nightmare_weight_maps.root horn "nightmare": 175.5 kA plus 1% of
+                                       the current along the Be target
+      <parent>/weight2              same layout; pi+- and K+- only
   flux_hadprod_sw_piplus_u0387.root    Sanford-Wang pi+ production universe 387
       <flavor>/<parent>/weight3     TH3D  x = E_nu [GeV], y = |p|, z = theta
       <flavor>/<parent>/weight      TH2D  the same without theta
@@ -30,6 +33,8 @@ import uproot
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 HORN_PATH = os.path.join(DATA_DIR, "flux_horn_171p5kA_weight_maps.root")
+HORN_NIGHTMARE_PATH = os.path.join(DATA_DIR,
+                                   "flux_horn_nightmare_weight_maps.root")
 HADPROD_PATH = os.path.join(DATA_DIR, "flux_hadprod_sw_piplus_u0387.root")
 
 # parent pdg -> directory name in both map files; any other parent: weight 1
@@ -76,7 +81,11 @@ def parent_p_theta(px, py, pz):
 
 
 class HornCurrentMaps:
-    """Horn-current weight maps: w(parent, |p|, theta), flavour-independent."""
+    """Horn-focusing weight maps: w(parent, |p|, theta), flavour-independent.
+
+    A parent without a <name>/weight2 map in the file gets weight 1, as in
+    the source horn_caf_weight.h (the nightmare file maps pi+- and K+- only).
+    """
 
     def __init__(self, path=None):
         path = path or HORN_PATH
@@ -85,7 +94,10 @@ class HornCurrentMaps:
                 raise ValueError(f"{path}: 3D (v_z-slab) horn maps are not "
                                  "supported; expected a single slab")
             self.maps = {pdg: BinnedMap.from_root(f, f"{name}/weight2")
-                         for pdg, name in PARENTS.items()}
+                         for pdg, name in PARENTS.items()
+                         if f"{name}/weight2" in f}
+            if not self.maps:
+                raise ValueError(f"{path}: no <parent>/weight2 maps")
             self.provenance = str(f["provenance"])
 
     def weight(self, parent_pdg, px, py, pz):

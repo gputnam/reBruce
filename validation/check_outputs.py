@@ -44,14 +44,16 @@ ALL_CALCS = ["fdwgt_mec_bdt", "fdwgt_qe_zexp_mva_to_lqcd",
                             "fdwgt_osc_ic2024_dm2lo",
                             "fdwgt_osc_ic2024_bestfit",
                             "fdwgt_osc_ic2024_dm2hi"]
-FLUX_CALCS = ["fdwgt_flux_hadprod_sw_piplus_u387", "fdwgt_flux_horn_171p5kA"]
+FLUX_CALCS = ["fdwgt_flux_hadprod_sw_piplus_u387", "fdwgt_flux_horn_171p5kA",
+              "fdwgt_flux_horn_nightmare"]
 
 
 def _short(branch):
     """5-char column label for the coverage table."""
     parts = branch.split("_")
     if parts[1] == "flux":
-        return parts[2][:5]
+        # hadpr, horn (171.5 kA) and night (horn nightmare)
+        return (parts[-1] if parts[-1] == "nightmare" else parts[2])[:5]
     # branches that differ only in their last part are labelled by it
     return (parts[-1][:5]
             if parts[-1] in ("pzmarg", "bnb", "postfsi", "prefsi",

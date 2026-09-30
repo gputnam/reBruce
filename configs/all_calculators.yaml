@@ -24,3 +24,4 @@ calculators:
   # --test-shim to exercise the code on non-physical defaults)
   - type: flux_hadron_production  # SW pi+ universe 387, (E_nu, |p|, theta) map
   - type: flux_horn_current       # 174 -> 171.5 kA; nu_mu / nu_mu-bar only
+  - type: flux_horn_nightmare     # 175.5 kA + 1% target current; nu_mu / nu_mu-bar only

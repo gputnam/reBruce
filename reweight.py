@@ -86,9 +86,10 @@ Post-FSI final-state truth (momentum-ordered) [GeV], -999 when unfilled:
                                         SPP photon veto)
     true_np, true_npi, true_npi0        final-state particle counts
 
-Flux ancestry (flux_horn_current, flux_hadron_production) -- NOT in sBruce
-schema 20; see MISSING_INFO.md. Branch names are calculator options (the
-flux calculators also read true_pdg and, hadron production only, true_E):
+Flux ancestry (flux_horn_current, flux_horn_nightmare,
+flux_hadron_production) -- NOT in sBruce schema 20; see MISSING_INFO.md.
+Branch names are calculator options (the flux calculators also read
+true_pdg and, hadron production only, true_E):
     true_parent_pdg             int; neutrino parent PDG (rec.mc.nu.parent_pdg)
     true_parent_dcy_mom_{x,y,z} parent momentum at its decay point, beam
                                 coordinates [GeV/c] (rec.mc.nu.parent_dcy_mom)

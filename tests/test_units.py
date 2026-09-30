@@ -686,7 +686,7 @@ def _full_branch_stub(n=8, **overrides):
 
 def test_every_registered_calculator_declares_branches():
     calcs = _all_calcs()
-    assert len(calcs) == 13
+    assert len(calcs) == 14
     for c in calcs:
         b = c.branches_needed()
         assert isinstance(b, list) and b, c.type_name
@@ -751,8 +751,8 @@ class _RecordingSBruce(_StubSBruce):
     "mec_bdt", "qe_zexp_mva_to_lqcd", "pi_fsi_ha2025",
     "jaesung_lowq2_pi_enhancement", "ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi",
     "t2k_nc1pi", "minerva_3dqelike",
-    "flux_horn_current", "flux_hadron_production", "osc_sterile_ic2024",
-    "ccqe_xsec_corr",
+    "flux_horn_current", "flux_horn_nightmare", "flux_hadron_production",
+    "osc_sterile_ic2024", "ccqe_xsec_corr",
 ])
 def test_compute_reads_only_declared_branches(type_name):
     """The anti-drift test: what compute() loads must be what it declares.
@@ -815,7 +815,7 @@ def test_check_branches_reports_missing_in_declared_order():
 
 
 def test_check_branches_cvwgt_blocks_nearly_everything():
-    """cvwgt is read by every calculator except the seven that need no
+    """cvwgt is read by every calculator except the eight that need no
     per-file normalization or W-tercile population."""
     from fakedata.calculator import blocked, check_branches
 
@@ -823,8 +823,8 @@ def test_check_branches_cvwgt_blocks_nearly_everything():
     runnable = {c.type_name for c, missing in report if not missing}
     assert runnable == {"pi_fsi_ha2025", "jaesung_lowq2_pi_enhancement",
                         "qe_zexp_mva_to_lqcd", "flux_horn_current",
-                        "flux_hadron_production", "osc_sterile_ic2024",
-                        "ccqe_xsec_corr"}
+                        "flux_horn_nightmare", "flux_hadron_production",
+                        "osc_sterile_ic2024", "ccqe_xsec_corr"}
     assert len(blocked(report)) == 6
 
 
@@ -838,7 +838,7 @@ def test_format_branch_report_names_branches_and_calculators():
     assert "MISSING" in txt
     assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
     assert "qe_zexp_mva_to_lqcd" in txt
-    assert "blocked calculators (5 of 13)" in txt
+    assert "blocked calculators (5 of 14)" in txt
     assert "/some/file.root" in txt
 
     ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")
@@ -1051,6 +1051,39 @@ def test_horn_map_known_cells_and_zero_flow():
     assert maps.weight([2212], [0.0], [0.0], [2.0])[0] == 1.0
 
 
+def test_horn_nightmare_map_parents_and_cells():
+    """The nightmare file maps pi+- and K+- only: K0L and mu+- get 1 (as in
+    the source horn_caf_weight.h); mapped parents read the inner bins."""
+    import uproot
+    from fakedata.fluxmap import HORN_NIGHTMARE_PATH, HornCurrentMaps
+
+    maps = HornCurrentMaps(HORN_NIGHTMARE_PATH)
+    assert set(maps.maps) == {211, -211, 321, -321}
+    assert '"I":175.5' in maps.provenance and '"boreFrac":0.01' in maps.provenance
+    np.testing.assert_array_equal(
+        maps.weight([130, -13, 13], [0.0] * 3, [0.0] * 3, [2.0] * 3), 1.0)
+    f = uproot.open(HORN_NIGHTMARE_PATH)
+    for pdg, name in ((-211, "piminus"), (321, "kplus")):
+        h = f[f"{name}/weight2"]
+        v, ep, et = h.values(), h.axes[0].edges(), h.axes[1].edges()
+        assert np.all(h.values(flow=True)[-1] == 0)  # zero flow: clamp
+        p, th = 0.5 * (ep[20] + ep[21]), 0.5 * (et[6] + et[7])
+        w = maps.weight([pdg], [0.0], [p * np.sin(th)], [p * np.cos(th)])
+        assert w[0] == v[20, 6]
+        assert maps.weight([pdg], [0.0], [0.0], [100.0])[0] == v[-1, 0]
+
+
+def test_horn_maps_reject_file_without_maps(tmp_path):
+    import uproot
+    from fakedata.fluxmap import HornCurrentMaps
+
+    path = str(tmp_path / "empty.root")
+    with uproot.recreate(path) as f:
+        f["provenance"] = "nothing here"
+    with pytest.raises(ValueError, match="no <parent>/weight2"):
+        HornCurrentMaps(path)
+
+
 def test_hadprod_reproduces_source_readme_value():
     """First neutrino of the source README's sample-CAF printout."""
     from fakedata.fluxmap import HadronProductionMaps
@@ -1089,13 +1122,16 @@ def test_flux_calculators_domain():
         px=[0.0, 0.0, 0.0, -999.0, np.nan, 0.0, 0.0],
         py=[0.0] * 7, pz=[2.3, 2.3, 2.3, -999.0, 2.3, 2.3, 2.3])
     horn = REGISTRY["flux_horn_current"]().compute(sb)["fdwgt_flux_horn_171p5kA"]
+    night = REGISTRY["flux_horn_nightmare"]().compute(sb)[
+        "fdwgt_flux_horn_nightmare"]
     sw = REGISTRY["flux_hadron_production"]().compute(sb)[
         "fdwgt_flux_hadprod_sw_piplus_u387"]
-    for w in (horn, sw):
+    for w in (horn, night, sw):
         assert np.all(np.isfinite(w))
         assert w[0] != 1.0 and w[6] != 1.0
         assert np.all(w[1:5] == 1.0)
-    assert horn[5] == 1.0          # nu_e: horn maps not validated
+    assert horn[5] == 1.0 and night[5] == 1.0   # nu_e: not validated
+    assert not np.array_equal(horn, night)
     # nu_e from K+: the hadprod map applies (this cell happens to be 1.0)
     from fakedata.fluxmap import HadronProductionMaps
     assert sw[5] == HadronProductionMaps().weight(
@@ -1145,7 +1181,8 @@ def test_shim_runs_flux_calculators():
                         "true_E": np.array([0.8, 1.2, 1.0, 1.0, -999.0],
                                            dtype=np.float32)})
     sb = DefaultBranchShim(base)
-    for name in ("flux_horn_current", "flux_hadron_production"):
+    for name in ("flux_horn_current", "flux_horn_nightmare",
+                 "flux_hadron_production"):
         calc = REGISTRY[name]()
         assert all(sb.has_branch(b) for b in calc.branches_needed())
         (w,) = calc.compute(sb).values()

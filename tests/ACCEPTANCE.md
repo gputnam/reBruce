@@ -26,12 +26,10 @@ reference outputs are gone, skip step 3 and say so rather than silently passing.
 ./venv/bin/python -m pytest tests/ -q
 ```
 
-**Expect:** all pass. As of the flux calculators this is **90 tests** (55 original
-+ 20 branch-declaration/preflight tests + 5 output-format tests + 10 flux-map /
-shim tests). A drop in count means tests were lost, not that things got faster.
+**Expect:** all pass. As of `flux_horn_nightmare` this is **108 tests**. A drop in count means tests were lost, not that things got faster.
 
 `test_write_output_stl_vectors` is skipped unless PyROOT is importable
-(`export PYTHONPATH=$(root-config --libdir)`); a run reporting `89 passed,
+(`export PYTHONPATH=$(root-config --libdir)`); a run reporting `107 passed,
 1 skipped` means ROOT was not on the path, not that anything is wrong.
 
 The highest-value test in that set is `test_compute_reads_only_declared_branches`:
@@ -77,6 +75,7 @@ EOF
 | `ub_ccpi` | 24 |
 | `flux_hadron_production` | 6 |
 | `flux_horn_current` | 5 |
+| `flux_horn_nightmare` | 5 |
 | `osc_sterile_ic2024` | 2 |
 | **union** | **56** |
 
@@ -89,7 +88,7 @@ calculator changing.
 
 The refactor was meant to be behaviour-preserving. Reproduce one file and diff it
 against a known-good output. sBruce schema 20 has no flux-ancestry branches, so the
-two flux calculators are dropped with `--skip-incomplete` here; they are checked
+three flux calculators are dropped with `--skip-incomplete` here; they are checked
 in 3c.
 
 ```bash
@@ -192,9 +191,9 @@ so this check tests plumbing and lookup only.
 
 **Expect:**
 - the `WARNING --test-shim` line naming the four `true_parent_*` branches;
-- both flux calculators weighting about 96% of events;
-- `wrote 29 cv/ps1 dials`;
-- `check_outputs.py` OK on both files, with the `hadpr`/`horn` columns filled
+- all three flux calculators weighting about 96% of events;
+- `wrote 30 cv/ps1 dials`;
+- `check_outputs.py` OK on both files, with the `hadpr`/`horn`/`night` columns filled
   for `shim.root` and shown as `-` for `regress.root`.
 
 The other 27 dials in `shim.root` must be bit-identical to `regress.root`, because
@@ -204,9 +203,12 @@ When the map files or `fakedata/fluxmap.py` change, re-run the exact cross-check
 against the source C++:
 1. Copy `horn_caf_weight.h` and `sw_caf_weight.h` from
    `sbndgpvm04:/pnfs/sbn/persistent/users/kplows/fake_data/flux/` (read only).
+   For `flux_horn_nightmare` use the `horn_caf_weight.h` and
+   `apply_horn_weight.py` shipped with its map file (same reader code).
 2. Evaluate them with ROOT on random and edge-case points.
 3. Compare with `HornCurrentMaps` / `HadronProductionMaps` (all three `map`
-   options). Expect 0 mismatches. The first run found 0 in 20k points.
+   options). Expect 0 mismatches. The first run found 0 in 20k points, and so
+   did the nightmare maps (20k points, vs both the C++ and the python source).
 
 ## 4. Preflight against real files
 
@@ -219,13 +221,13 @@ D=/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
 ```
 
 **Expect:**
-- CV file: `13 calculators, 56 distinct branches, 4 MISSING` -- exactly
-  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (2 of 13)`
-  (the two flux calculators), `exit=1`, ending `run the other 11`. With
+- CV file: `14 calculators, 56 distinct branches, 4 MISSING` -- exactly
+  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (3 of 14)`
+  (the three flux calculators), `exit=1`, ending `run the other 11`. With
   `--test-shim` appended: a WARNING naming those four branches, then `all present`,
   `exit=0`.
-- Off-beam data: `35 MISSING`, `blocked calculators (13 of 13)`,
-  `runnable calculators (0 of 13): (none)`, `exit=1`, and the error line ends
+- Off-beam data: `35 MISSING`, `blocked calculators (14 of 14)`,
+  `runnable calculators (0 of 14): (none)`, `exit=1`, and the error line ends
   `no calculator can run on this file`.
 
 The off-beam file is a genuine missing-branch case in the real production — it has
@@ -284,15 +286,15 @@ done
 | fixture | missing | blocked | note |
 |---|---|---|---|
 | `good` | 0 | — | `all present`, exit 0 |
-| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 13** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
-| `drop_prefsi_n` | 3 | **2 of 13** | `qe_zexp_mva_to_lqcd` and `ccqe_xsec_corr` (reads `genie_prefsi_n_px` for the nu-bar recoil neutron) |
-| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 13** | the 7 survivors (incl. both flux calculators, `osc_sterile_ic2024` and `ccqe_xsec_corr`) read no `cvwgt` |
+| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 14** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
+| `drop_prefsi_n` | 3 | **2 of 14** | `qe_zexp_mva_to_lqcd` and `ccqe_xsec_corr` (reads `genie_prefsi_n_px` for the nu-bar recoil neutron) |
+| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 14** | the 8 survivors (incl. the three flux calculators, `osc_sterile_ic2024` and `ccqe_xsec_corr`) read no `cvwgt` |
 
 Without `--test-shim`, each row also shows the 4 parent branches missing and
-both flux calculators blocked (for example `drop_cvwgt` becomes 8 of 13).
+the three flux calculators blocked (for example `drop_cvwgt` becomes 9 of 14).
 
 Each failing case must end with a remedy, e.g.
-`re-run with --skip-incomplete to drop them and run the other 7`. A diagnosis with
+`re-run with --skip-incomplete to drop them and run the other 8`. A diagnosis with
 no next step is a regression — that was a review finding.
 
 Then check `--skip-incomplete` actually produces the reduced set:
@@ -303,8 +305,8 @@ Then check `--skip-incomplete` actually produces the reduced set:
   --skip-incomplete --test-shim 2>&1 | grep -E "dropping|wrote"
 ```
 
-**Expect:** `dropping 3 of 13 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
-t2k_nc1pi)` and `wrote 19 cv/ps1 dials` (vs 29 for a complete run).
+**Expect:** `dropping 3 of 14 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
+t2k_nc1pi)` and `wrote 20 cv/ps1 dials` (vs 30 for a complete run).
 
 ## 6. Structural errors: readable, not tracebacks
 
@@ -340,9 +342,9 @@ Expect 20 CV files selected (13 `SBNDMCCV_*`, 3 `ICARUSRun2_SpringMCOverlay_rewg
 `SBND_SpringLowEMC_sbruce.root` raised as `ask`.
 
 The preflight should flag every CV file as missing the 4 `true_parent_*` branches
-and blocking only the two flux calculators. The agent should recognise that as the
+and blocking only the three flux calculators. The agent should recognise that as the
 known schema-20 gap described in SKILL.md, and proceed with `--skip-incomplete`
-(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 26 dials each,
+(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 27 dials each,
 and `check_outputs.py` should give **20 files, 0 failures**, with `-` in the flux
 columns. Each file
 takes well under a second, so the whole run is seconds, not minutes.
