@@ -2,6 +2,7 @@
 
 # Calculators are imported here as they are implemented; each module
 # registers its class(es) with fakedata.calculator.register at import time.
+from . import ccqe_corr  # noqa: F401
 from . import flux  # noqa: F401
 from . import mec_bdt  # noqa: F401
 from . import minerva_qelike  # noqa: F401

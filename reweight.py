@@ -56,7 +56,8 @@ Interaction-level truth:
 
 GENIE event-record (pre-FSI) kinematics [GeV], -999 when unfilled:
     genie_Enu                   true neutrino energy
-    genie_q0, genie_q3          energy/3-momentum transfer (lab)
+    genie_q0, genie_q3          energy/3-momentum transfer (lab); the
+                                (q0, q3) of the ccqe_xsec_corr maps
     genie_W                     GENIE-convention W (on-shell nucleon at rest)
     genie_pmiss, genie_emiss    struck-nucleon |p| and removal energy
                                 (cross-checks for the Nieves QE evaluation)

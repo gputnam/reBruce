@@ -121,6 +121,8 @@ output_dir: output          # used if --output/output not given
 calculators:
   - type: mec_bdt
   - type: qe_zexp_mva_to_lqcd
+  - type: ccqe_xsec_corr                    # v3_04_02a -> v3_06_02 CCQE bugfix
+    flavors: [14, -14, 12, -12]             # default: all four
   - type: jaesung_lowq2_pi_enhancement       # 2 branches: _postfsi + _prefsi
   - type: ub_cc1p0pi
     variable: dpt_dat                       # default; any CSV observable works
@@ -206,6 +208,87 @@ tensor crosses zero and the missing radius genuinely matters
 Option `ga_convention: tune` (default; each coefficient set uses its own
 FA(0)) or `nusyst` (both use the AR23 CV FA(0) = -1.2670, the
 nusystematics ZExpPCAWeighter convention).
+
+### `ccqe_xsec_corr` -> branch `fdwgt_ccqe_xsec_corr`
+The CCQE template bugfix: reweights CC QE events from GENIE v3_04_02a to
+v3_06_02 ("sbn2"). It is a python port of the nusystematics
+[`CCQEXSecCorr`][ccqecorr] tool with the settings of its
+`fcl/CCQEXSecCorr.ToolConfig.fcl`:
+
+    w = map[flavor, E_nu](q3, q0)
+
+- **Maps:** one (q3, q0) map per flavor (nu_e, nu_e-bar, nu_mu, nu_mu-bar)
+  per point of an E_nu grid, 0.20-3.00 GeV in 0.05 GeV steps. That is 228
+  maps, each 500 x 500 on [0, 3.5]^2 GeV.
+- **Energy:** the two maps around E_nu are blended linearly, or the grid
+  point is used alone when E_nu is within 5 MeV of it.
+- **Lookup:** nearest bin in each map. A (q3, q0) outside the axes takes the
+  edge bin.
+- **Clamp:** each map value and the blended weight are clamped to [0, 30].
+  The driver's weight clip (0, 10) is then tighter.
+
+**Domain:** CC QE (`genie_mode == 0`, `true_isnc == 0`) of the four flavors
+(`flavors` option), with 0.20 <= E_nu <= 3.00 GeV. Weight 1 elsewhere.
+`genie_q0` / `genie_q3` are the tool's q0 = E_nu - E_lep and q3 =
+|p_nu - p_lep|. On schema 20 they match the values recomputed from
+`genie_prefsi_lep_*` to < 3e-7 GeV.
+
+**Departures from the tool (default).** Both push weights toward 1, never
+toward 0. `match_tool: true` switches both off and reproduces the tool
+exactly.
+
+- **Nucleon QE only.** GENIE also files QE hyperon production (nu-bar p ->
+  l+ Lambda / Sigma) under QE, so the tool's `IsQuasiElastic()` weights it,
+  using maps built for nucleon QE. Its q0 lies far above the QE peak, in
+  empty bins, so the tool mostly gives it weight 0. Here an event needs its
+  pre-FSI recoil nucleon or it gets weight 1: `genie_prefsi_p_*` for a
+  neutrino, `genie_prefsi_n_*` (schema >= 20) for an antineutrino.
+- **Map coverage.** A map covers an event when (q3, q0) is inside its axes
+  and in a non-empty bin; empty bins are ones the source MC never populated.
+  - If both blended maps cover the event, the tool's blend is used.
+  - If only one does, that map's weight is used alone. The tool blends in
+    the empty map's 0 instead.
+  - If neither does, the weight is 1. The tool gives 0, or the edge-bin
+    value off the axes.
+
+  One-map events are common. Near the kinematic edge, the lower-energy map
+  often does not reach the event's (q3, q0), because that phase space is not
+  open at the lower E_nu. The tool then scales the weight by the blend
+  fraction, to 18-90% of the covered map's value.
+
+  A bin whose source MC was populated but whose target MC was empty would
+  also read 0 and count as uncovered. The maps do not distinguish the two
+  cases.
+
+The coverage printout counts the events of each kind.
+
+**Data:** the maps come from the `NuSystematics/nusyst_data` release
+`v01_00_00` (`QEFix.part01..04.tar.gz`, 5.7 GB, almost all of it per-event
+trees the tool never reads). `scripts/build_ccqe_xsec_corr_maps.py` extracts
+the 228 `h_weights_map` histograms unchanged into
+`data/ccqe_xsec_corr_sbn2_maps.root`, after checking each tarball's sha256.
+All 228 are bit-identical to the source files.
+
+**Validation:** `validation/validate_ccqe_xsec_corr.py` needs PyROOT. It
+compares the calculator event by event, in both modes, with a C++
+transcription of the tool compiled by ROOT. The reference reads the vendored
+maps with ROOT's own `FindBin` / `GetBinContent`, makes its own event
+selection, and restates the two departures separately. On all 23
+`sbn-rewgted-20` MC files (358k events, 216k CC QE) there are **0
+mismatches** in either mode. Every event outside the domain has weight 1.
+
+| sbn-rewgted-20, CC QE | `match_tool: true` | default |
+|---|---|---|
+| events at weight 0 | 94 (75 nu_mu-bar hyperons) | 0 |
+| no recoil nucleon -> 1 | - | 102 (82 of 370 nu_mu-bar, 19 nu_mu, 1 nu_e-bar) |
+| no map covers -> 1 | - | 18 |
+| one map covers -> used alone | - | 6439 (3.0%) |
+| cvwgt-weighted mean weight | 0.977 | 0.990 |
+
+The mean moves by +0.013, almost all of it (+0.0126) from the one-map
+events.
+
+[ccqecorr]: https://github.com/NuSystematics/nusystematics/blob/develop/src/nusystematics/systproviders/CCQEXSecCorr_tool.cc
 
 ### `pi_fsi_ha2025` -> branch `fdwgt_pi_fsi_ha2025`
 Reweights the INTRANUKE pion FSI fate fractions from hA2018 to hA2025:
@@ -573,7 +656,8 @@ reweight.py            driver (--check-branches preflight; the header
                        annotates all assumed TBranches)
 fakedata/              package: sbruce I/O, output writer, physics modules
 fakedata/calculators/  the weight calculators
-data/                  BDT model, measurement weight tables, flux weight maps
+data/                  BDT model, measurement weight tables, flux and CCQE
+                       weight maps
                        (provenance in data/README.md)
 configs/               example configs
 tests/                 pytest unit tests

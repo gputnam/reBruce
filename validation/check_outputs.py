@@ -35,6 +35,7 @@ XSEC_CALCS = ["fdwgt_ub_cc1p0pi_dpt_dat", "fdwgt_ub_cc2p0pi_delta_pt",
 # nominal-only calculators (no _loW/_midW/_hiW branches, so they are not in
 # XSEC_CALCS, which drives the W-mode closure check)
 ALL_CALCS = ["fdwgt_mec_bdt", "fdwgt_qe_zexp_mva_to_lqcd",
+             "fdwgt_ccqe_xsec_corr",
              "fdwgt_pi_fsi_ha2025",
              "fdwgt_jaesung_lowq2_pi_enhancement_postfsi",
              "fdwgt_jaesung_lowq2_pi_enhancement_prefsi",

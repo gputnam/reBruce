@@ -70,6 +70,7 @@ EOF
 | `minerva_3dqelike` | 14 |
 | `pi_fsi_ha2025` | 5 |
 | `qe_zexp_mva_to_lqcd` | 13 |
+| `ccqe_xsec_corr` | 8 |
 | `t2k_nc1pi` | 9 |
 | `ub_cc1p0pi` | 20 |
 | `ub_cc2p0pi` | 20 |
@@ -192,11 +193,11 @@ so this check tests plumbing and lookup only.
 **Expect:**
 - the `WARNING --test-shim` line naming the four `true_parent_*` branches;
 - both flux calculators weighting about 96% of events;
-- `wrote 28 cv/ps1 dials`;
+- `wrote 29 cv/ps1 dials`;
 - `check_outputs.py` OK on both files, with the `hadpr`/`horn` columns filled
   for `shim.root` and shown as `-` for `regress.root`.
 
-The other 26 dials in `shim.root` must be bit-identical to `regress.root`, because
+The other 27 dials in `shim.root` must be bit-identical to `regress.root`, because
 the shim only adds branches.
 
 When the map files or `fakedata/fluxmap.py` change, re-run the exact cross-check
@@ -218,13 +219,13 @@ D=/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
 ```
 
 **Expect:**
-- CV file: `12 calculators, 56 distinct branches, 4 MISSING` -- exactly
-  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (2 of 12)`
-  (the two flux calculators), `exit=1`, ending `run the other 10`. With
+- CV file: `13 calculators, 56 distinct branches, 4 MISSING` -- exactly
+  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (2 of 13)`
+  (the two flux calculators), `exit=1`, ending `run the other 11`. With
   `--test-shim` appended: a WARNING naming those four branches, then `all present`,
   `exit=0`.
-- Off-beam data: `35 MISSING`, `blocked calculators (12 of 12)`,
-  `runnable calculators (0 of 12): (none)`, `exit=1`, and the error line ends
+- Off-beam data: `35 MISSING`, `blocked calculators (13 of 13)`,
+  `runnable calculators (0 of 13): (none)`, `exit=1`, and the error line ends
   `no calculator can run on this file`.
 
 The off-beam file is a genuine missing-branch case in the real production — it has
@@ -283,15 +284,15 @@ done
 | fixture | missing | blocked | note |
 |---|---|---|---|
 | `good` | 0 | — | `all present`, exit 0 |
-| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 12** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
-| `drop_prefsi_n` | 3 | **1 of 12** | `qe_zexp_mva_to_lqcd` only |
-| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 12** | the 6 survivors (incl. both flux calculators and `osc_sterile_ic2024`) read no `cvwgt` |
+| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 13** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
+| `drop_prefsi_n` | 3 | **2 of 13** | `qe_zexp_mva_to_lqcd` and `ccqe_xsec_corr` (reads `genie_prefsi_n_px` for the nu-bar recoil neutron) |
+| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 13** | the 7 survivors (incl. both flux calculators, `osc_sterile_ic2024` and `ccqe_xsec_corr`) read no `cvwgt` |
 
 Without `--test-shim`, each row also shows the 4 parent branches missing and
-both flux calculators blocked (for example `drop_cvwgt` becomes 8 of 12).
+both flux calculators blocked (for example `drop_cvwgt` becomes 8 of 13).
 
 Each failing case must end with a remedy, e.g.
-`re-run with --skip-incomplete to drop them and run the other 6`. A diagnosis with
+`re-run with --skip-incomplete to drop them and run the other 7`. A diagnosis with
 no next step is a regression — that was a review finding.
 
 Then check `--skip-incomplete` actually produces the reduced set:
@@ -302,8 +303,8 @@ Then check `--skip-incomplete` actually produces the reduced set:
   --skip-incomplete --test-shim 2>&1 | grep -E "dropping|wrote"
 ```
 
-**Expect:** `dropping 3 of 12 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
-t2k_nc1pi)` and `wrote 18 cv/ps1 dials` (vs 28 for a complete run).
+**Expect:** `dropping 3 of 13 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
+t2k_nc1pi)` and `wrote 19 cv/ps1 dials` (vs 29 for a complete run).
 
 ## 6. Structural errors: readable, not tracebacks
 

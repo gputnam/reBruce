@@ -20,7 +20,7 @@ Run everything from the repository root
 Parse the skill's free-form argument string as:
 
 - **first positional** — the input folder. Required. If absent, ask for it.
-- **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 12
+- **`--config PATH`** — defaults to `configs/all_calculators.yaml` (all 13
   calculators, all W modes; this is what the downstream analysis expects).
 - **`--output DIR`** — defaults to `output/<basename of the input folder>/`.
 - **`--stl-vectors`** — pass it through to `reweight.py` when the user asks for
@@ -258,9 +258,9 @@ Close with:
 - files processed, and where the outputs are;
 - files skipped, and the reason for each class, including any unreadable ones;
 - the dials written — state the count and confirm every file agrees, listing the
-  names **once** for the set rather than per file (28 dials for the default
-  config, or 26 when the flux calculators were dropped on a schema-20 file; that
-  is 56 / 52 branches with PyROOT, or 112 / 104 with uproot, which adds a counter per
+  names **once** for the set rather than per file (29 dials for the default
+  config, or 27 when the flux calculators were dropped on a schema-20 file; that
+  is 58 / 54 branches with PyROOT, or 116 / 108 with uproot, which adds a counter per
   branch), and say which writer ran;
 - the `check_outputs.py` verdict;
 - anything left for the user to decide — `ask` files, incomplete files, large clip

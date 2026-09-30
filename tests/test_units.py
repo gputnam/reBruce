@@ -686,7 +686,7 @@ def _full_branch_stub(n=8, **overrides):
 
 def test_every_registered_calculator_declares_branches():
     calcs = _all_calcs()
-    assert len(calcs) == 12
+    assert len(calcs) == 13
     for c in calcs:
         b = c.branches_needed()
         assert isinstance(b, list) and b, c.type_name
@@ -752,6 +752,7 @@ class _RecordingSBruce(_StubSBruce):
     "jaesung_lowq2_pi_enhancement", "ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi",
     "t2k_nc1pi", "minerva_3dqelike",
     "flux_horn_current", "flux_hadron_production", "osc_sterile_ic2024",
+    "ccqe_xsec_corr",
 ])
 def test_compute_reads_only_declared_branches(type_name):
     """The anti-drift test: what compute() loads must be what it declares.
@@ -804,7 +805,7 @@ def test_check_branches_reports_missing_in_declared_order():
     report = check_branches(sb, calcs)
     bad = {c.type_name: missing for c, missing in blocked(report)}
     assert set(bad) == {"qe_zexp_mva_to_lqcd", "jaesung_lowq2_pi_enhancement",
-                        "ub_ccpi", "t2k_nc1pi"}
+                        "ub_ccpi", "t2k_nc1pi", "ccqe_xsec_corr"}
     assert bad["qe_zexp_mva_to_lqcd"] == ["genie_prefsi_n_px"]
     assert bad["t2k_nc1pi"] == ["true_cpi_p"]
     # each missing list is a subsequence of that calculator's declaration
@@ -814,7 +815,7 @@ def test_check_branches_reports_missing_in_declared_order():
 
 
 def test_check_branches_cvwgt_blocks_nearly_everything():
-    """cvwgt is read by every calculator except the six that need no
+    """cvwgt is read by every calculator except the seven that need no
     per-file normalization or W-tercile population."""
     from fakedata.calculator import blocked, check_branches
 
@@ -822,7 +823,8 @@ def test_check_branches_cvwgt_blocks_nearly_everything():
     runnable = {c.type_name for c, missing in report if not missing}
     assert runnable == {"pi_fsi_ha2025", "jaesung_lowq2_pi_enhancement",
                         "qe_zexp_mva_to_lqcd", "flux_horn_current",
-                        "flux_hadron_production", "osc_sterile_ic2024"}
+                        "flux_hadron_production", "osc_sterile_ic2024",
+                        "ccqe_xsec_corr"}
     assert len(blocked(report)) == 6
 
 
@@ -836,7 +838,7 @@ def test_format_branch_report_names_branches_and_calculators():
     assert "MISSING" in txt
     assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
     assert "qe_zexp_mva_to_lqcd" in txt
-    assert "blocked calculators (4 of 12)" in txt
+    assert "blocked calculators (5 of 13)" in txt
     assert "/some/file.root" in txt
 
     ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")
@@ -1213,3 +1215,167 @@ def test_osc_points_option():
     assert list(SterileIceCube2024(points=["bestfit"]).points) == ["bestfit"]
     c = SterileIceCube2024(points={"x": [1.0, 0.1]})
     assert c.points == {"x": (1.0, 0.1)}
+
+
+# ---------------------------------------------------------------------------
+# ccqe_xsec_corr (nusystematics CCQEXSecCorr port)
+
+def _ccqe_toy_maps(**kw):
+    """Three grid points (0.20, 0.25, 0.30 GeV), 4 x 4 bins on [0, 4]^2.
+    Map i holds i + 1 in every inner bin except bin (q3 1, q0 2) = 0 and
+    bin (q3 4, q0 4) = 50; flow bins 0 (as in the real maps)."""
+    from fakedata.ccqe_corr import Axis, CCQEXSecCorrMaps, WeightMap
+
+    def loader(pdg, i):
+        v = np.zeros((6, 6))
+        v[1:5, 1:5] = i + 1.0
+        v[1, 2] = 0.0
+        v[4, 4] = 50.0
+        return WeightMap(v, Axis(4, 0.0, 4.0), Axis(4, 0.0, 4.0))
+
+    kw.setdefault("energy_grid", (0.20, 0.25, 0.30))
+    kw.setdefault("enu_max", 0.30)
+    return CCQEXSecCorrMaps(loader=loader, **kw)
+
+
+def test_ccqe_axis_find_bin_is_root_convention():
+    from fakedata.ccqe_corr import Axis
+
+    ax = Axis(500, 0.0, 3.5)
+    np.testing.assert_array_equal(
+        ax.find_bin([-1e-9, 0.0, 0.007, 0.0069999, 3.4999, 3.5, 9.0]),
+        [0, 1, 2, 1, 500, 501, 501])
+
+
+def test_ccqe_energy_snap_and_blend():
+    m = _ccqe_toy_maps()
+    q = [2.5] * 6        # q3 bin 3, q0 bin 3: map i reads i + 1
+    enu = [0.20, 0.2049, 0.225, 0.2451, 0.26, 0.30]
+    np.testing.assert_allclose(m.weight([14] * 6, enu, q, q),
+                               [1.0, 1.0, 1.5, 2.0, 2.2, 3.0])
+
+
+def test_ccqe_energy_window_and_flavor():
+    m = _ccqe_toy_maps()
+    w = m.weight([14, 14, 14, 16, -12], [0.19, 0.2 - 5e-7, 0.31, 0.25, 0.25],
+                 [2.5] * 5, [2.5] * 5)
+    np.testing.assert_array_equal(w, [1.0, 1.0, 1.0, 1.0, 2.0])
+
+
+def test_ccqe_bins_edges_and_clamp_match_tool():
+    """coverage=False: the tool exactly, zeros and edge bins included."""
+    m = _ccqe_toy_maps(coverage=False)
+    n = 6
+    #       q3 above range -> edge bin, q0 below -> edge bin,
+    #       empty bin, empty bin in one blended map only, clamp 50 -> 30,
+    #       exactly at the axis max -> ROOT overflow (0), as in the tool
+    q3 = [99.0, 2.5, 0.5, 0.5, 3.5, 4.0]
+    q0 = [2.5, -1.0, 1.5, 1.5, 3.5, 2.5]
+    enu = [0.25, 0.25, 0.25, 0.225, 0.25, 0.25]
+    w, unc = m.weight_and_coverage([14] * n, enu, q0, q3)
+    np.testing.assert_array_equal(w, [2.0, 2.0, 0.0, 0.0, 30.0, 0.0])
+    np.testing.assert_array_equal(unc, [1, 1, 1, 1, 0, 1])
+    w = _ccqe_toy_maps(coverage=False, w_limits=(0.0, 100.0)).weight(
+        [14], [0.25], [3.5], [3.5])
+    assert w[0] == 50.0
+
+
+def test_ccqe_coverage_default():
+    """Off the axes, in an empty bin, or at the (empty) overflow edge:
+    weight 1. The clamp still applies to covered bins."""
+    m = _ccqe_toy_maps()
+    q3 = [99.0, 2.5, 0.5, 0.5, 3.5, 4.0, 2.5]
+    q0 = [2.5, -1.0, 1.5, 1.5, 3.5, 2.5, 2.5]
+    enu = [0.25, 0.25, 0.25, 0.225, 0.25, 0.25, 0.1]
+    w, unc = m.weight_and_coverage([14] * 7, enu, q0, q3)
+    np.testing.assert_array_equal(w, [1.0, 1.0, 1.0, 1.0, 30.0, 1.0, 1.0])
+    # E_nu off the grid is weight 1 but not "uncovered"
+    np.testing.assert_array_equal(unc, [1, 1, 1, 1, 0, 1, 0])
+
+
+def test_ccqe_coverage_one_map_empty_uses_the_other():
+    """The blend partner is empty in one map only: that map's weight alone."""
+    from fakedata.ccqe_corr import Axis, CCQEXSecCorrMaps, WeightMap
+
+    def loader(pdg, i):
+        v = np.zeros((6, 6))
+        v[1:5, 1:5] = i + 1.0
+        if i == 1:
+            v[2, 2] = 0.0        # q3, q0 in [1, 2): empty at 0.25 GeV only
+        return WeightMap(v, Axis(4, 0.0, 4.0), Axis(4, 0.0, 4.0))
+
+    m = CCQEXSecCorrMaps(loader=loader, energy_grid=(0.20, 0.25, 0.30),
+                         enu_max=0.30)
+    w = m.weight([14, 14, 14], [0.225, 0.275, 0.225], [1.5, 1.5, 2.5],
+                 [1.5, 1.5, 2.5])
+    np.testing.assert_array_equal(w, [1.0, 3.0, 1.5])
+    tool = CCQEXSecCorrMaps(loader=loader, energy_grid=(0.20, 0.25, 0.30),
+                            enu_max=0.30, coverage=False)
+    np.testing.assert_allclose(
+        tool.weight([14, 14], [0.225, 0.275], [1.5, 1.5], [1.5, 1.5]),
+        [0.5, 1.5], rtol=1e-14)
+
+
+def _ccqe_calc(match_tool=False):
+    from fakedata.calculators.ccqe_corr import CCQEXSecCorr
+
+    calc = CCQEXSecCorr.__new__(CCQEXSecCorr)
+    calc.branch, calc.flavors = "fdwgt_ccqe_xsec_corr", [14, -14, 12, -12]
+    calc.match_tool = match_tool
+    calc.maps = _ccqe_toy_maps(coverage=not match_tool)
+    return calc
+
+
+def test_ccqe_calculator_domain():
+    from fakedata.calculators.ccqe_corr import CCQEXSecCorr
+
+    #  QE nu_mu, RES, NC, nu_tau, sentinel q0, QE nu_e-bar,
+    #  nu_mu-bar hyperon (no pre-FSI n), nu_mu without its pre-FSI p,
+    #  nu_mu in an empty bin
+    a = {"genie_mode": np.array([0, 1, 0, 0, 0, 0, 0, 0, 0.0]),
+         "true_isnc": np.array([0, 0, 1, 0, 0, 0, 0, 0, 0]),
+         "true_pdg": np.array([14, 14, 14, 16, 14, -12, -14, 14, 14]),
+         "genie_Enu": np.full(9, 0.25),
+         "genie_q0": np.array([2.5, 2.5, 2.5, 2.5, -999.0, 2.5, 2.5, 2.5,
+                               1.5]),
+         "genie_q3": np.array([2.5] * 8 + [0.5]),
+         "genie_prefsi_p_px": np.array([0.1] * 7 + [-999.0, 0.1]),
+         "genie_prefsi_n_px": np.array([0.1] * 6 + [-999.0, 0.1, 0.1])}
+    calc = _ccqe_calc()
+    sb = _RecordingSBruce(a, calc.branches_needed())
+    w = calc.compute(sb)["fdwgt_ccqe_xsec_corr"]
+    np.testing.assert_array_equal(w, [2.0, 1, 1, 1, 1, 2.0, 1, 1, 1])
+    # match_tool: no recoil-nucleon requirement, empty bin -> 0
+    tool = _ccqe_calc(match_tool=True)
+    assert "genie_prefsi_n_px" not in tool.branches_needed()
+    sb = _RecordingSBruce(a, tool.branches_needed())
+    w = tool.compute(sb)["fdwgt_ccqe_xsec_corr"]
+    np.testing.assert_array_equal(w, [2.0, 1, 1, 1, 1, 2.0, 2.0, 2.0, 0.0])
+    with pytest.raises(ValueError):
+        CCQEXSecCorr(flavors=[16])
+
+
+def test_ccqe_vendored_maps():
+    """The data file carries every map of the fcl grid, 500 x 500 on
+    [0, 3.5]^2 with zero flow bins, and the lookup reads them."""
+    import uproot
+    from fakedata.ccqe_corr import (ENERGY_GRID, FLAVORS, MAPS_PATH,
+                                    CCQEXSecCorrMaps)
+
+    assert ENERGY_GRID[0] == 0.20 and ENERGY_GRID[-1] == 3.00
+    assert len(ENERGY_GRID) == 57
+    with uproot.open(MAPS_PATH) as f:
+        meta = f["meta"].arrays(library="np")
+        assert len(meta["flavor"]) == 4 * 57
+        for fl in FLAVORS.values():
+            h = f[f"{fl}/E0.70"]
+            assert [(len(ax.edges()) - 1, ax.edges()[0], ax.edges()[-1])
+                    for ax in h.axes] == [(500, 0.0, 3.5)] * 2
+            v = h.values(flow=True)
+            assert v[0].sum() == v[-1].sum() == v[:, 0].sum() == \
+                v[:, -1].sum() == 0
+        v = f["numu/E0.70"].values()
+    maps = CCQEXSecCorrMaps()
+    # bin (q3 60, q0 30), 0-based inner indices, at a grid point
+    q3, q0 = 0.007 * 60.5, 0.007 * 30.5
+    assert maps.weight([14], [0.70], [q0], [q3])[0] == min(v[60, 30], 30.0)
