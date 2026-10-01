@@ -51,7 +51,11 @@ Interaction-level truth:
                                 equal to genie_Enu). Read by
                                 osc_sterile_ic2024 (with true_pdg; the
                                 oscillation baseline is a fixed 110 m, the
-                                `baseline` branch is NOT read) and
+                                `baseline` branch is NOT read),
+                                osc_sterile_ic2024_unfolded (with true_pdg;
+                                a hard-coded true-E table -- `baseline` and
+                                nu_E_calo enter only its offline build,
+                                scripts/build_osc_ic2024_unfolded.py) and
                                 flux_hadron_production
 
 GENIE event-record (pre-FSI) kinematics [GeV], -999 when unfilled:

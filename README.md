@@ -88,7 +88,7 @@ one parent per flavour, moving along the beam with `p = true_E / 0.427`.
 Every calculator then runs and the full lookup path is exercised. The flux
 weights produced this way are not a flux variation, so never feed them to a
 fit. Without the flag, a schema-20 file fails the preflight on those four
-branches; use `--skip-incomplete` to run the other ten calculators.
+branches; use `--skip-incomplete` to run the other twelve calculators.
 
 `--stl-vectors` writes the dials as genuine `std::vector<double>` branches
 using PyROOT. That is the type PROfit's `SetBranchAddress` binds to
@@ -142,6 +142,8 @@ calculators:
   - type: osc_sterile_ic2024                # 3 branches: _dm2lo/_bestfit/_dm2hi
     points: [dm2lo, bestfit, dm2hi]         # default: all three
     baseline_km: 0.110                      # default: SBND, for every file
+  - type: osc_sterile_ic2024_unfolded       # 3 branches: _unf_{dm2lo,bestfit,dm2hi}
+    points: [dm2lo, bestfit, dm2hi]         # default: all three
 ```
 
 Each calculator declares the `SelectedEvents` branches it reads in
@@ -625,6 +627,58 @@ On `sbn-rewgted-20` the cvwgt-weighted mean weights are:
 - `flavors` (default `[14, -14]`);
 - `pdg_branch` / `energy_branch`.
 
+### `osc_sterile_ic2024_unfolded` -> branches `fdwgt_osc_ic2024_unf_{dm2lo,bestfit,dm2hi}`
+
+The same three IceCube points, but expressed as a **true-energy-only** weight:
+the distortion a fit would infer in true E from the oscillation's SBND
+reco-energy signature.
+
+**How the table is built** (offline, `scripts/build_osc_ic2024_unfolded.py`,
+over all 13 `SBNDMCCV_*` files of `sbn-rewgted-20`):
+1. The SBND nu_mu + nu_mu-bar (CC and NC) spectrum in reco energy `nu_E_calo`
+   (the GUMP binning plus open under/overflow), null and oscillated. The
+   oscillation uses each event's **own `baseline`** (metres, 93-132 m) and
+   `true_E`, so there is no single-baseline assumption.
+2. The `cvwgt`-weighted 2D migration matrix `nu_E_calo` x `true_E` of the same
+   events. True binning: GUMP edges, then 2, 3 GeV and open overflow.
+3. D'Agostini unfolding of the oscillated reco spectrum (`fakedata/unfold.py`;
+   prior = the MC truth; 50 iterations). The weight in each true-E bin is
+   unfolded / null truth. With no oscillation the prior is a fixed point, so
+   the weight is exactly 1.
+
+**Why the table is hard-coded:** `reweight.py` sees one file at a time, and
+the spectra need the whole SBND production. The table therefore lives in
+`fakedata/calculators/osc_sterile.py` between the `BEGIN/END UNFOLD TABLE`
+markers. `--write` regenerates it and `--check` verifies it against a fresh
+build.
+
+**Run time:** only `true_pdg` and `true_E` are read. The weight is piecewise
+constant in true E (the last bin is open) and applies to nu_mu / nu_mu-bar in
+**SBND and ICARUS files alike**. Everything else gets 1.
+
+**Closure:** applying the dials to the SBND CV set reproduces the
+per-event-baseline oscillated `nu_E_calo` spectrum to < 1e-4 in every GUMP bin
+below 1.25 GeV, and to 0.2-0.7% in the sparse 1.25-1.5 GeV bin. The fixed-110 m
+`osc_sterile_ic2024` misses it by up to 1.8% (`_dm2hi`).
+
+**Convergence caveat:** the true bins above 1.25 GeV are weakly constrained,
+because `nu_E_calo` rarely lands there. At `_bestfit` they sit about 3-5% below
+the direct true-E ratio and still drift slowly with more iterations. The
+build script prints the per-iteration closure and the direct ratio for
+comparison.
+
+On `sbn-rewgted-20` the cvwgt-weighted mean weights are:
+
+| detector | `_unf_dm2lo` | `_unf_bestfit` | `_unf_dm2hi` |
+|---|---|---|---|
+| SBND | 0.981 | 0.938 | 0.893 |
+| ICARUS | 0.984 | 0.948 | 0.875 |
+
+**Options:**
+- `points`, a list of labels;
+- `flavors` (default `[14, -14]`);
+- `pdg_branch` / `energy_branch`.
+
 [ic2024]: https://doi.org/10.1103/PhysRevLett.133.201804
 
 ## Weight clip
@@ -691,6 +745,8 @@ data/                  BDT model, measurement weight tables, flux and CCQE
                        weight maps
                        (provenance in data/README.md)
 configs/               example configs
+scripts/               offline builders of the data/ tables and the
+                       hard-coded osc_sterile_ic2024_unfolded table
 tests/                 pytest unit tests
 validation/            validation scripts (Nieves vs stored GENIE weights)
 MISSING_INFO.md        sBruce information gaps and the placeholders used

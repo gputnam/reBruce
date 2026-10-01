@@ -77,6 +77,7 @@ EOF
 | `flux_horn_current` | 5 |
 | `flux_horn_nightmare` | 5 |
 | `osc_sterile_ic2024` | 2 |
+| `osc_sterile_ic2024_unfolded` | 2 |
 | **union** | **56** |
 
 plus `True | True` on the last line. `ub_cc1p0pi(divide_out_ff=True)` is 31.
@@ -136,10 +137,12 @@ print("BIT-IDENTICAL" if worst == 0 else "CHANGED -- justify before proceeding")
 EOF
 ```
 
-**Expect:** 26 weights, `max |delta| = 0.000e+00`, `BIT-IDENTICAL`. Against a
-baseline in `output/` that predates `osc_sterile_ic2024`, also expect `added (no
-baseline yet): ['osc_ic2024_bestfit', 'osc_ic2024_dm2hi', 'osc_ic2024_dm2lo']`
-and 23 compared weights; any other added or lost branch is a failure. The cv knot
+**Expect:** 30 weights, `max |delta| = 0.000e+00`, `BIT-IDENTICAL`. Against a
+baseline in `output/` that predates `osc_sterile_ic2024_unfolded`, also expect
+`added (no baseline yet): ['osc_ic2024_unf_bestfit', 'osc_ic2024_unf_dm2hi',
+'osc_ic2024_unf_dm2lo']` and 27 compared weights (plus the three
+`osc_ic2024_{bestfit,dm2hi,dm2lo}`, 24 compared, if it also predates
+`osc_sterile_ic2024`); any other added or lost branch is a failure. The cv knot
 and sigma grid assertions must also hold for every dial.
 
 Any non-zero delta must be explained by an intentional physics change. If you
@@ -170,8 +173,8 @@ print("max |uproot - PyROOT| =", worst)
 EOF
 ```
 
-**Expect:** `52 branches`, `{'std::vector<double>'}`, `max |uproot - PyROOT| = 0.0`.
-The uproot output has 104 branches for the same 26 dials -- uproot adds an `int32`
+**Expect:** `60 branches`, `{'std::vector<double>'}`, `max |uproot - PyROOT| = 0.0`.
+The uproot output has 120 branches for the same 30 dials -- uproot adds an `int32`
 counter (`nmultisigma_fdwgt_*`) it cannot avoid; PyROOT writes the vectors
 directly and needs none.
 
@@ -192,11 +195,11 @@ so this check tests plumbing and lookup only.
 **Expect:**
 - the `WARNING --test-shim` line naming the four `true_parent_*` branches;
 - all three flux calculators weighting about 96% of events;
-- `wrote 30 cv/ps1 dials`;
+- `wrote 33 cv/ps1 dials`;
 - `check_outputs.py` OK on both files, with the `hadpr`/`horn`/`night` columns filled
   for `shim.root` and shown as `-` for `regress.root`.
 
-The other 27 dials in `shim.root` must be bit-identical to `regress.root`, because
+The other 30 dials in `shim.root` must be bit-identical to `regress.root`, because
 the shim only adds branches.
 
 When the map files or `fakedata/fluxmap.py` change, re-run the exact cross-check
@@ -221,13 +224,13 @@ D=/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20
 ```
 
 **Expect:**
-- CV file: `14 calculators, 56 distinct branches, 4 MISSING` -- exactly
-  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (3 of 14)`
+- CV file: `15 calculators, 56 distinct branches, 4 MISSING` -- exactly
+  `true_parent_pdg`, `true_parent_dcy_mom_{x,y,z}` -- `blocked calculators (3 of 15)`
   (the three flux calculators), `exit=1`, ending `run the other 11`. With
   `--test-shim` appended: a WARNING naming those four branches, then `all present`,
   `exit=0`.
-- Off-beam data: `35 MISSING`, `blocked calculators (14 of 14)`,
-  `runnable calculators (0 of 14): (none)`, `exit=1`, and the error line ends
+- Off-beam data: `35 MISSING`, `blocked calculators (15 of 15)`,
+  `runnable calculators (0 of 15): (none)`, `exit=1`, and the error line ends
   `no calculator can run on this file`.
 
 The off-beam file is a genuine missing-branch case in the real production — it has
@@ -286,15 +289,15 @@ done
 | fixture | missing | blocked | note |
 |---|---|---|---|
 | `good` | 0 | — | `all present`, exit 0 |
-| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 14** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
-| `drop_prefsi_n` | 3 | **2 of 14** | `qe_zexp_mva_to_lqcd` and `ccqe_xsec_corr` (reads `genie_prefsi_n_px` for the nu-bar recoil neutron) |
-| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 14** | the 8 survivors (incl. the three flux calculators, `osc_sterile_ic2024` and `ccqe_xsec_corr`) read no `cvwgt` |
+| `drop_cpi` | 1 (`true_cpi_p`) | **3 of 15** | `jaesung_lowq2_pi_enhancement`, `ub_ccpi`, `t2k_nc1pi` |
+| `drop_prefsi_n` | 3 | **2 of 15** | `qe_zexp_mva_to_lqcd` and `ccqe_xsec_corr` (reads `genie_prefsi_n_px` for the nu-bar recoil neutron) |
+| `drop_cvwgt` | 1 (`cvwgt`) | **6 of 15** | the 9 survivors (incl. the three flux calculators, both `osc_sterile_ic2024*` and `ccqe_xsec_corr`) read no `cvwgt` |
 
 Without `--test-shim`, each row also shows the 4 parent branches missing and
-the three flux calculators blocked (for example `drop_cvwgt` becomes 9 of 14).
+the three flux calculators blocked (for example `drop_cvwgt` becomes 9 of 15).
 
 Each failing case must end with a remedy, e.g.
-`re-run with --skip-incomplete to drop them and run the other 8`. A diagnosis with
+`re-run with --skip-incomplete to drop them and run the other 9`. A diagnosis with
 no next step is a regression — that was a review finding.
 
 Then check `--skip-incomplete` actually produces the reduced set:
@@ -305,8 +308,8 @@ Then check `--skip-incomplete` actually produces the reduced set:
   --skip-incomplete --test-shim 2>&1 | grep -E "dropping|wrote"
 ```
 
-**Expect:** `dropping 3 of 14 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
-t2k_nc1pi)` and `wrote 20 cv/ps1 dials` (vs 30 for a complete run).
+**Expect:** `dropping 3 of 15 calculators (jaesung_lowq2_pi_enhancement, ub_ccpi,
+t2k_nc1pi)` and `wrote 23 cv/ps1 dials` (vs 33 for a complete run).
 
 ## 6. Structural errors: readable, not tracebacks
 
@@ -344,7 +347,7 @@ Expect 20 CV files selected (13 `SBNDMCCV_*`, 3 `ICARUSRun2_SpringMCOverlay_rewg
 The preflight should flag every CV file as missing the 4 `true_parent_*` branches
 and blocking only the three flux calculators. The agent should recognise that as the
 known schema-20 gap described in SKILL.md, and proceed with `--skip-incomplete`
-(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 27 dials each,
+(never `--test-shim`). Outputs go in `output/sbn-rewgted-20/` with 30 dials each,
 and `check_outputs.py` should give **20 files, 0 failures**, with `-` in the flux
 columns. Each file
 takes well under a second, so the whole run is seconds, not minutes.

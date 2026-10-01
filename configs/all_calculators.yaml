@@ -19,6 +19,11 @@ calculators:
   #   bestfit dm2 =  3.5  eV^2, sin^2(2th24) = 0.16   (best fit)
   #   dm2hi   dm2 = 12.1  eV^2, sin^2(2th24) = 0.187  (95% CL contour, max dm2)
   - type: osc_sterile_ic2024  # 3 branches: _dm2lo, _bestfit, _dm2hi
+  # the same three points, as the SBND reco-energy (nu_E_calo) offset at the
+  # per-event baseline unfolded to a true-energy weight (D'Agostini on the
+  # full SBND CV migration matrix; table built offline by
+  # scripts/build_osc_ic2024_unfolded.py); nu_mu / nu_mu-bar, all files
+  - type: osc_sterile_ic2024_unfolded  # 3 branches: _unf_{dm2lo,bestfit,dm2hi}
   # flux variations: need the true_parent_* flux-ancestry branches, absent
   # from sBruce schema 20 (run those files with --skip-incomplete, or with
   # --test-shim to exercise the code on non-physical defaults)

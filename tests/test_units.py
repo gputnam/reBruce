@@ -686,7 +686,7 @@ def _full_branch_stub(n=8, **overrides):
 
 def test_every_registered_calculator_declares_branches():
     calcs = _all_calcs()
-    assert len(calcs) == 14
+    assert len(calcs) == 15
     for c in calcs:
         b = c.branches_needed()
         assert isinstance(b, list) and b, c.type_name
@@ -752,7 +752,7 @@ class _RecordingSBruce(_StubSBruce):
     "jaesung_lowq2_pi_enhancement", "ub_cc1p0pi", "ub_cc2p0pi", "ub_ccpi",
     "t2k_nc1pi", "minerva_3dqelike",
     "flux_horn_current", "flux_horn_nightmare", "flux_hadron_production",
-    "osc_sterile_ic2024", "ccqe_xsec_corr",
+    "osc_sterile_ic2024", "osc_sterile_ic2024_unfolded", "ccqe_xsec_corr",
 ])
 def test_compute_reads_only_declared_branches(type_name):
     """The anti-drift test: what compute() loads must be what it declares.
@@ -815,7 +815,7 @@ def test_check_branches_reports_missing_in_declared_order():
 
 
 def test_check_branches_cvwgt_blocks_nearly_everything():
-    """cvwgt is read by every calculator except the eight that need no
+    """cvwgt is read by every calculator except the nine that need no
     per-file normalization or W-tercile population."""
     from fakedata.calculator import blocked, check_branches
 
@@ -824,7 +824,8 @@ def test_check_branches_cvwgt_blocks_nearly_everything():
     assert runnable == {"pi_fsi_ha2025", "jaesung_lowq2_pi_enhancement",
                         "qe_zexp_mva_to_lqcd", "flux_horn_current",
                         "flux_horn_nightmare", "flux_hadron_production",
-                        "osc_sterile_ic2024", "ccqe_xsec_corr"}
+                        "osc_sterile_ic2024", "osc_sterile_ic2024_unfolded",
+                        "ccqe_xsec_corr"}
     assert len(blocked(report)) == 6
 
 
@@ -838,7 +839,7 @@ def test_format_branch_report_names_branches_and_calculators():
     assert "MISSING" in txt
     assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
     assert "qe_zexp_mva_to_lqcd" in txt
-    assert "blocked calculators (5 of 14)" in txt
+    assert "blocked calculators (5 of 15)" in txt
     assert "/some/file.root" in txt
 
     ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")
@@ -1252,6 +1253,66 @@ def test_osc_points_option():
     assert list(SterileIceCube2024(points=["bestfit"]).points) == ["bestfit"]
     c = SterileIceCube2024(points={"x": [1.0, 0.1]})
     assert c.points == {"x": (1.0, 0.1)}
+
+
+def test_osc_unfolded_table_shape():
+    from fakedata.calculators.osc_sterile import (POINTS, UNFOLD_N_ITER,
+                                                  UNFOLD_TRUE_EDGES,
+                                                  UNFOLD_WEIGHTS)
+
+    assert set(UNFOLD_WEIGHTS) == set(POINTS)
+    assert UNFOLD_N_ITER > 0
+    assert UNFOLD_TRUE_EDGES[0] == 0 and np.isinf(UNFOLD_TRUE_EDGES[-1])
+    assert np.all(np.diff(UNFOLD_TRUE_EDGES) > 0)
+    for label, (_, s22) in POINTS.items():
+        w = UNFOLD_WEIGHTS[label]
+        assert w.shape == (len(UNFOLD_TRUE_EDGES) - 1,)
+        # a disappearance: every bin depleted, by no more than the amplitude
+        assert np.all(np.isfinite(w)) and np.all(w < 1) and np.all(w > 1 - s22)
+
+
+def test_osc_unfolded_lookup_and_scope():
+    """Piecewise constant in true E (bin edge belongs to the upper bin, last
+    bin open); nu_e, no-truth and unfilled true_E get exactly 1."""
+    from fakedata.calculators.osc_sterile import (
+        UNFOLD_TRUE_EDGES as edges, UNFOLD_WEIGHTS, SterileIceCube2024Unfolded)
+
+    e = np.array([0.1, edges[5], 0.5 * (edges[5] + edges[6]), 50.0,
+                  0.7, 0.7, -999.0, 0.0])
+    pdg = np.array([14, -14, 14, 14, 12, -1, 14, 14])
+    calc = SterileIceCube2024Unfolded()
+    assert calc.branches_needed() == ["true_pdg", "true_E"]
+    out = calc.compute(_StubSBruce({"true_pdg": pdg, "true_E": e}))
+    assert set(out) == {f"fdwgt_osc_ic2024_unf_{k}" for k in UNFOLD_WEIGHTS}
+    for label, tab in UNFOLD_WEIGHTS.items():
+        w = out[f"fdwgt_osc_ic2024_unf_{label}"]
+        np.testing.assert_array_equal(w[:4], [tab[0], tab[5], tab[5], tab[-1]])
+        assert np.all(w[4:] == 1.0)
+
+
+def test_osc_unfolded_points_option():
+    from fakedata.calculators.osc_sterile import SterileIceCube2024Unfolded
+
+    assert SterileIceCube2024Unfolded(points=["dm2hi"]).points == ["dm2hi"]
+    with pytest.raises(KeyError):
+        SterileIceCube2024Unfolded(points=["nope"])
+
+
+def test_dagostini_fixed_point_and_closure():
+    """Unfolding the MC's own reco spectrum returns the MC truth; with a
+    square, invertible migration it converges onto the exact inverse."""
+    from fakedata.unfold import dagostini, refold
+
+    mig = np.array([[8.0, 2.0, 0.0],
+                    [2.0, 6.0, 3.0],
+                    [0.0, 2.0, 7.0]])
+    truth = mig.sum(axis=0)
+    for u in dagostini(mig, mig.sum(axis=1), 5):
+        np.testing.assert_allclose(u, truth, rtol=1e-12)
+    data = refold(mig, truth * np.array([0.9, 1.0, 1.1]))
+    u = dagostini(mig, data, 2000)[-1]
+    np.testing.assert_allclose(u / truth, [0.9, 1.0, 1.1], rtol=1e-6)
+    np.testing.assert_allclose(refold(mig, u), data, rtol=1e-9)
 
 
 # ---------------------------------------------------------------------------
