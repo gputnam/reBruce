@@ -311,6 +311,80 @@ def test_pi_fsi_code_mapping():
 
 
 # ---------------------------------------------------------------------------
+# MicroBooNE CC1p0pi / CC2p0pi signal: proton window and soft-pion allowance
+# from the leading particles, not the threshold-less counts
+# ---------------------------------------------------------------------------
+
+def _ub_events(p1, p2, cpi, np_count, npi):
+    n = len(p1)
+    f = lambda v: np.asarray(v, dtype=float)
+    return {"true_isnc": np.zeros(n), "true_pdg": np.full(n, 14),
+            "nu_E": np.full(n, 1.0), "true_mu_p": np.full(n, 0.5),
+            "true_mu_dir_z": np.full(n, 0.9),
+            "true_p_p": f(p1), "true_p_dir_z": np.full(n, 0.5),
+            "true_p2_p": f(p2), "true_p2_dir_z": np.full(n, 0.5),
+            "true_cpi_p": f(cpi), "true_np": f(np_count),
+            "true_npi": f(npi), "true_npi0": np.zeros(n)}
+
+
+def test_ub_cc1p0pi_signal_allows_subthreshold_particles():
+    from fakedata.tki import sig_cc1p0pi
+    U = -999.0
+    a = _ub_events(
+        p1=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.2, 1.2],
+        p2=[U, 0.2, 0.4, U, U, 0.3, U, 0.5],
+        cpi=[U, U, U, 0.05, 0.08, U, U, U],
+        np_count=[1, 3, 2, 1, 1, 2, 1, 2],
+        npi=[0, 0, 0, 1, 1, 0, 0, 0])
+    #      1p   +soft p  2p in win  soft pi  hard pi  p2 at edge  p1 low  p1 > 1
+    assert list(sig_cc1p0pi(a)) == [True, True, False, True, False, True,
+                                    False, False]
+
+
+def test_ub_cc2p0pi_signal_ignores_proton_count():
+    from fakedata.tki import sig_cc2p0pi
+    U = -999.0
+    a = _ub_events(
+        p1=[0.6, 0.6, 0.6, 0.6, 0.6],
+        p2=[0.4, 0.4, 0.2, 0.4, 0.4],
+        cpi=[U, U, U, 0.06, 0.07],
+        np_count=[2, 4, 3, 2, 2],
+        npi=[0, 0, 0, 1, 1])
+    #      2p   2p + soft  p2 low  soft pi  hard pi
+    assert list(sig_cc2p0pi(a)) == [True, True, False, True, False]
+
+
+def test_mec_bdt_raw_cap_protects_normalization():
+    """One out-of-distribution raw BDT weight must not set the per-file
+    scale for every other event."""
+    from fakedata.calculators.mec_bdt import MECBDTCalculator
+
+    class _Model:
+        def predict_weights(self, feats):
+            w = np.full(len(feats), 2.0)
+            w[0] = 7.3e7
+            return w
+
+    n = 100
+    a = {b: np.full(n, 0.3) for b in
+         ["genie_prefsi_lep_px", "genie_prefsi_lep_py", "genie_prefsi_lep_pz",
+          "genie_prefsi_p_px", "genie_prefsi_p_py", "genie_prefsi_p_pz",
+          "genie_prefsi_p2_px", "genie_prefsi_p2_py", "genie_prefsi_p2_pz"]}
+    a.update(genie_mode=np.full(n, 10.0), true_isnc=np.zeros(n),
+             true_pdg=np.full(n, 14), cvwgt=np.ones(n))
+    calc = MECBDTCalculator.__new__(MECBDTCalculator)
+    calc.branch, calc.normalize, calc.norm_scale = "w", "per-file", None
+    calc.model = _Model()
+    calc.raw_cap = 10.0
+    w = calc.compute(_StubSBruce(a))["w"]
+    assert np.isclose(w.mean(), 1.0)
+    assert np.allclose(w[1:], w[1])            # the rest share one weight
+    assert 0.5 < w[1] < 1.0                    # not driven to ~0
+    calc.raw_cap = None
+    assert calc.compute(_StubSBruce(a))["w"][1] < 1e-5   # the failure mode
+
+
+# ---------------------------------------------------------------------------
 # MINERvA LE/ME 3D QE-like table and signal definition
 # ---------------------------------------------------------------------------
 
@@ -828,6 +902,7 @@ def test_check_branches_reports_missing_in_declared_order():
     report = check_branches(sb, calcs)
     bad = {c.type_name: missing for c, missing in blocked(report)}
     assert set(bad) == {"qe_zexp_mva_to_lqcd", "jaesung_lowq2_pi_enhancement",
+                        "ub_cc1p0pi", "ub_cc2p0pi",
                         "ub_ccpi", "t2k_nc1pi", "ccqe_xsec_corr"}
     assert bad["qe_zexp_mva_to_lqcd"] == ["genie_prefsi_n_px"]
     assert bad["t2k_nc1pi"] == ["true_cpi_p"]
@@ -862,7 +937,7 @@ def test_format_branch_report_names_branches_and_calculators():
     assert "MISSING" in txt
     assert "genie_prefsi_n_px" in txt and "true_cpi_p" in txt
     assert "qe_zexp_mva_to_lqcd" in txt
-    assert "blocked calculators (5 of 15)" in txt
+    assert "blocked calculators (7 of 15)" in txt
     assert "/some/file.root" in txt
 
     ok = format_branch_report(check_branches(_full_branch_stub(), calcs), "f")

@@ -176,10 +176,14 @@ pre-FSI protons and the muon in the reaction frame (neutrino along +z, muon
 pT along -y). The sBruce `genie_prefsi_*` momenta are already stored in a
 nu/lepton frame; the conversion to the BDT frame is a sign flip of the y
 components. Applies only to events with a pre-FSI pp nucleon pair (matching
-the BDT's training selection). Weights are normalized per input file so the
-cvwgt-weighted mean over reweighted events is exactly 1 (shape-only; MEC
-rate unchanged). Options: `normalize: per-file | none | fixed` (+
-`norm_scale`).
+the BDT's training selection). Raw BDT weights are first capped at
+`raw_cap` (default 10, the upper `WEIGHT_CLIP`): the BDT extrapolates wildly
+on rare out-of-distribution events (one ICARUS CV event has a raw weight of
+7.3e7), and uncapped, that one event would set the per-file scale and push
+every other MEC event in its file to ~1e-5. Weights are then normalized per
+input file so the cvwgt-weighted mean over reweighted events is exactly 1
+(shape-only; MEC rate unchanged). Options: `normalize: per-file | none |
+fixed` (+ `norm_scale`), `raw_cap` (`null` disables).
 
 ### `qe_zexp_mva_to_lqcd` -> branch `fdwgt_qe_zexp_mva_to_lqcd`
 Reweights the axial form factor of numu and numubar CC QE events from the MINERvA
@@ -383,6 +387,19 @@ Signal definitions mirror the papers/NUISANCE, computed from post-FSI truth
 counts `true_np/true_npi/true_npi0`); the pion's charge is not stored, so
 either charge is accepted (see MISSING_INFO.md). TKI variable formulas are
 in `fakedata/tki.py`.
+
+The counts have no momentum threshold, so `ub_cc1p0pi` and `ub_cc2p0pi` take
+their proton window (0.3-1.0 GeV/c) and soft-pion allowance (pi+- below
+70 / 65 MeV/c allowed) from the momentum-ordered leading particles instead,
+as the AR23 table builders do:
+- `ub_cc1p0pi`: leading proton in the window and the subleading one absent or
+  below 0.3 GeV/c. This is exact, since the subleading proton bounds all
+  others. Requiring `true_np == 1` instead lost ~21% of the paper signal
+  (extra sub-threshold protons). Not recovered: events whose leading proton
+  is above 1 GeV/c with another in the window (~0.2%).
+- `ub_cc2p0pi`: both stored protons in the window, any `true_np`. A third
+  proton is not stored and is assumed below 0.3 GeV/c, so events with a third
+  proton in the window are accepted wrongly.
 
 **W modes** (`w_modes: [nominal, loW, midW, hiW]`): in mode X the events in
 the relevant cvwgt-weighted equal-population tercile of the `genie_W`

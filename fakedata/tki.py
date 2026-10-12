@@ -7,12 +7,14 @@ the leading charged pion true_cpi_*) in detector coordinates with the beam
 along +z. The pion's charge is still not stored (true_npi counts
 |pdg| == 211); see MISSING_INFO.md.
 
-Signal definitions mirror the NUISANCE / paper definitions, with particle
-multiplicities taken from the sBruce truth counts (true_np, true_npi,
-true_npi0). Per analysis convention these counts are ASSUMED to use the
-same phase-space thresholds as the measurements (see MISSING_INFO.md);
-explicit momentum windows are additionally applied to the particles whose
-kinematics are stored (muon, leading/subleading proton, leading pion).
+Signal definitions mirror the NUISANCE / paper definitions. The sBruce
+truth counts (true_np, true_npi, true_npi0) have NO momentum threshold, so
+where a measurement counts particles in a momentum window, the MicroBooNE
+CC1p0pi / CC2p0pi definitions use the momentum-ordered leading particles
+instead: the proton window and the soft charged-pion allowance are read off
+true_p_p / true_p2_p / true_cpi_p (the stored particle is the leading one,
+so "the next one is below threshold" means "all others are"). Elsewhere the
+counts are used directly (see MISSING_INFO.md).
 
 TKI conventions (PRL 131 101802; PLB 872 140052):
   deltaPT      = |muT + hadT|                                 [GeV]
@@ -109,29 +111,49 @@ def opening_cos(v1, v2):
 # Signal definitions
 # ---------------------------------------------------------------------------
 
+def _none_above(x, pmax):
+    """The (leading) particle is absent or has momentum <= pmax."""
+    return ~valid(x) | (x <= pmax)
+
+
 def sig_cc1p0pi(a):
-    """MicroBooNE CC1mu1p0pi (PRL 131 101802)."""
+    """MicroBooNE CC1mu1p0pi (PRL 131 101802).
+
+    Exactly one proton in 0.3-1.0 GeV/c, any number outside; no pi0; no
+    charged pion above 70 MeV/c (NUISANCE isCC1Mu1p, and the AR23 table
+    builder). With the leading proton in the window, "exactly one" is
+    "the subleading proton is absent or below 0.3 GeV/c" -- exact, since
+    the subleading proton bounds every other one. (Events whose LEADING
+    proton is above 1 GeV/c with one in the window are signal too but are
+    not recovered: ~0.3-0.5%.)
+    """
     return (
         (a["true_isnc"] == 0) & (a["true_pdg"] == 14)
         & (a["nu_E"] > 0) & (a["nu_E"] < 6.8)
         & (a["true_mu_p"] > 0.1) & (a["true_mu_p"] < 1.2)
-        & (a["true_np"] == 1)
         & (a["true_p_p"] > 0.3) & (a["true_p_p"] < 1.0)
-        & (a["true_npi"] == 0) & (a["true_npi0"] == 0)
+        & _none_above(a["true_p2_p"], 0.3)
+        & _none_above(a["true_cpi_p"], 0.07) & (a["true_npi0"] == 0)
         & valid(a["true_mu_dir_z"], a["true_p_dir_z"])
     )
 
 
 def sig_cc2p0pi(a):
-    """MicroBooNE CC1mu2p0pi (PLB 872 140052)."""
+    """MicroBooNE CC1mu2p0pi (PLB 872 140052).
+
+    Exactly two protons in 0.3-1.0 GeV/c, any number outside; no pi0; no
+    charged pion above 65 MeV/c. Only two protons are stored, so this
+    requires both stored protons in the window and assumes any third one is
+    below 0.3 GeV/c (wrongly accepts events with a third proton in the
+    window; cannot recover events whose leading proton is above 1 GeV/c).
+    """
     return (
         (a["true_isnc"] == 0) & (a["true_pdg"] == 14)
         & (a["nu_E"] > 0) & (a["nu_E"] < 6.8)
         & (a["true_mu_p"] > 0.1) & (a["true_mu_p"] < 1.2)
-        & (a["true_np"] == 2)
         & (a["true_p_p"] > 0.3) & (a["true_p_p"] < 1.0)
         & (a["true_p2_p"] > 0.3) & (a["true_p2_p"] < 1.0)
-        & (a["true_npi"] == 0) & (a["true_npi0"] == 0)
+        & _none_above(a["true_cpi_p"], 0.065) & (a["true_npi0"] == 0)
         & valid(a["true_mu_dir_z"], a["true_p_dir_z"], a["true_p2_dir_z"])
     )
 

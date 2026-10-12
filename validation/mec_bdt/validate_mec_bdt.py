@@ -66,6 +66,7 @@ Usage: ./venv/bin/python validation/mec_bdt/validate_mec_bdt.py
            [--max-files N] [files...]
 """
 
+import inspect
 import os
 import sys
 
@@ -87,6 +88,9 @@ from fakedata.calculator import WEIGHT_CLIP                  # noqa: E402
 from fakedata.calculators.mec_bdt import (                   # noqa: E402
     BRANCHES, MODEL_PATH, MECBDTCalculator)
 from fakedata.sbruce import MODE_MEC, valid                  # noqa: E402
+
+# the calculator's default raw-weight cap (applied before normalization)
+RAW_CAP = inspect.signature(MECBDTCalculator.__init__).parameters["raw_cap"].default
 
 TRAIN_DIR = "/Users/gputnam/Work/osc/PROfit/MEC-BDT-WGT/models"
 TRAIN_SRC = os.path.join(TRAIN_DIR, "AR23SuSAv2_2p2h_pp_states.csv")
@@ -156,7 +160,9 @@ def process(sb, model):
         raw_xf[mask] = model.predict_weights(fx)
     cv = a["cvwgt"].astype(np.float64)
     closure = (np.sum((cv * w)[mask]) / np.sum(cv[mask])) if mask.any() else 1.0
-    scale = (np.sum(cv[mask]) / np.sum((cv * raw)[mask])) if mask.any() else 1.0
+    # the calculator caps raw weights at its raw_cap before normalizing
+    raw_c = np.minimum(raw, RAW_CAP) if RAW_CAP is not None else raw
+    scale = (np.sum(cv[mask]) / np.sum((cv * raw_c)[mask])) if mask.any() else 1.0
 
     # stored SuSAToVal knobs: product over the four q0-bin dials
     k = {}
@@ -167,7 +173,8 @@ def process(sb, model):
         k[s] = prod
 
     return dict(genie_mode=a["genie_mode"], true_isnc=a["true_isnc"],
-                true_pdg=a["true_pdg"], cvwgt=cv, w=w, raw=raw, raw_xf=raw_xf,
+                true_pdg=a["true_pdg"], cvwgt=cv, w=w, raw=raw, raw_c=raw_c,
+                raw_xf=raw_xf,
                 mask=mask, mec=mec, hasl=hasl, hasp=hasp, hasp2=hasp2,
                 hasn=hasn, hasn2=hasn2,
                 lep_px=a["genie_prefsi_lep_px"], lep_py=a["genie_prefsi_lep_py"],
@@ -529,11 +536,12 @@ def summarize(out, d, det, nfiles, src, tgt, model_ok):
         s = m & (d["_file"] == fi)
         if not s.any():
             continue
-        cr = (cv * d["raw"])[s]
+        cr = (cv * d["raw_c"])[s]
         share = cr.max() / cr.sum()
         out.check(share < 0.05,
                   f"file {fi}: largest single-event share of the per-file norm sum "
-                  f"{share:.2e} (raw w max {d['raw'][s].max():.3g}, scale {d['scale'][s][0]:.3g}, "
+                  f"{share:.2e} (raw w max {d['raw'][s].max():.3g}, capped at "
+                  f"{RAW_CAP}: {np.sum(d['raw'][s] > RAW_CAP)}; scale {d['scale'][s][0]:.3g}, "
                   f"N={s.sum()}; median normalized w {np.median(w[s]):.3g})")
     numu_mec = d["mec"] & (d["true_isnc"] == 0) & (d["true_pdg"] == 14)
     for lab, s in pair_class(d, numu_mec):

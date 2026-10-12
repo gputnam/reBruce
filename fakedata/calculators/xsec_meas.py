@@ -133,7 +133,8 @@ class UBCC1p0pi(XSecMeasCalculator):
     _CSV = "ub_cc1p0pi_xsec.csv"
 
     def table_branches(self):
-        return list(POSTFSI_BRANCHES)
+        # true_cpi_p: soft charged-pion allowance in the signal definition
+        return list(POSTFSI_BRANCHES) + ["true_cpi_p"]
 
     def load_table(self):
         obs = ("DeltaAlphaT_DeltaPT" if self.variable in ("dpt_dat", "DeltaAlphaT_DeltaPT")
@@ -180,7 +181,8 @@ class UBCC2p0pi(XSecMeasCalculator):
     _CSV = "ub_cc2p0pi_xsec.csv"
 
     def table_branches(self):
-        return list(POSTFSI_BRANCHES)
+        # true_cpi_p: soft charged-pion allowance in the signal definition
+        return list(POSTFSI_BRANCHES) + ["true_cpi_p"]
 
     def load_table(self):
         return load_ub_table(self._CSV, self.variable)

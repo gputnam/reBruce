@@ -281,15 +281,20 @@ def sig_indep(c, d):
     inw = lambda p: (p > P_WIN[0]) & (p < P_WIN[1])          # noqa: E731
     novmes = (d["true_npi"] == 0) & (d["true_npi0"] == 0)
     with np.errstate(invalid="ignore"):
+        # CC1p / CC2p: proton window and soft-pi allowance from the leading
+        # stored particles (the counts have no momentum threshold)
+        soft = lambda p, cut: ~valid(p) | (p <= cut)           # noqa: E731
         if c == "ub_cc1p0pi":
             return (numucc & (d["nu_E"] > 0) & (d["nu_E"] < 6.8) & (pmu > 0.1)
-                    & (pmu < 1.2) & (d["true_np"] == 1) & inw(p1) & novmes
+                    & (pmu < 1.2) & inw(p1) & soft(p2, P_WIN[0])
+                    & soft(ppi, 0.07) & (d["true_npi0"] == 0)
                     & valid(d["true_mu_dir_z"], d["true_p_dir_z"]))
         if c == "ub_cc2p0pi":
             return (numucc & (d["nu_E"] > 0) & (d["nu_E"] < 6.8) & (pmu > 0.1)
-                    & (pmu < 1.2) & (d["true_np"] == 2) & inw(p1) & inw(p2)
-                    & novmes & valid(d["true_mu_dir_z"], d["true_p_dir_z"],
-                                     d["true_p2_dir_z"]))
+                    & (pmu < 1.2) & inw(p1) & inw(p2)
+                    & soft(ppi, 0.065) & (d["true_npi0"] == 0)
+                    & valid(d["true_mu_dir_z"], d["true_p_dir_z"],
+                            d["true_p2_dir_z"]))
         onepi = (d["true_npi"] == 1) & (d["true_npi0"] == 0) & valid(ppi, d["true_cpi_dir_z"])
         if c == "ub_ccpi":
             th = np.arccos(np.clip(dot(unit(vec(d, "true_mu")), unit(vec(d, "true_cpi"))), -1, 1))

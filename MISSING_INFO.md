@@ -59,6 +59,15 @@ whose kinematics are stored (mu, p, p2, cpi). Kaon/other-meson vetoes
 reduce to the pi0 veto. **Regeneration**: thresholded counts or a small
 per-particle FS table would make the definitions exact.
 
+**Exception: MicroBooNE CC1p0pi / CC2p0pi.** The validation
+(`validation/xsec_meas/`) showed the assumption fails badly there:
+`true_np == 1` rejected ~21% of the CC1p0pi paper signal (extra protons
+below 300 MeV/c). Those two definitions now read the window off the
+momentum-ordered `true_p_p` / `true_p2_p` and the soft-pion allowance off
+`true_cpi_p` (`fakedata/tki.py`). CC1p0pi is then exact except for events
+whose leading proton is above 1 GeV/c. CC2p0pi still cannot see a third
+proton (item 5), so it assumes any third proton is below 0.3 GeV/c.
+
 ### 5. Only the two leading final-state protons are stored
 
 The MINERvA QE-like measurement bins in `SumT_p = sum(E - m_p)` over **all**

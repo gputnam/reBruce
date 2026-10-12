@@ -20,6 +20,13 @@ Mask (weight = 1 outside):
     pp-only selection. Momentum ordering (|p|) equals the training's
     kinetic-energy ordering for equal-mass protons.
 
+Raw-weight cap (default raw_cap = 10, the upper WEIGHT_CLIP): raw BDT
+weights are capped BEFORE normalization. The BDT extrapolates wildly on
+rare out-of-distribution events (one ICARUS CV event has a raw weight of
+7.3e7); uncapped, a single such event sets the per-file scale and drives
+every other MEC event in the file to ~1e-5 (see validation/mec_bdt/).
+raw_cap: null disables the cap.
+
 Normalization (default "per-file"): weights are scaled so the cvwgt-weighted
 mean weight over masked events is exactly 1 (shape-only reweight; the MEC
 rate in the file is unchanged).
@@ -30,7 +37,7 @@ import os
 import numpy as np
 
 from ..bdt import GBReweighterJSON
-from ..calculator import Calculator, register
+from ..calculator import WEIGHT_CLIP, Calculator, register
 from ..sbruce import MODE_MEC, valid
 
 MODEL_PATH = os.path.join(
@@ -51,11 +58,14 @@ BRANCHES = [
 @register("mec_bdt")
 class MECBDTCalculator(Calculator):
     def __init__(self, branch="fdwgt_mec_bdt", normalize="per-file", norm_scale=None,
-                 model=None):
-        """normalize: "per-file" (default), "none", or "fixed" with norm_scale."""
+                 model=None, raw_cap=WEIGHT_CLIP[1]):
+        """normalize: "per-file" (default), "none", or "fixed" with norm_scale.
+        raw_cap: cap on the raw BDT weight, applied before normalization
+        (None: no cap)."""
         self.branch = branch
         self.normalize = normalize
         self.norm_scale = norm_scale
+        self.raw_cap = raw_cap
         self.model = GBReweighterJSON(model or MODEL_PATH)
 
     def branches_needed(self):
@@ -94,6 +104,12 @@ class MECBDTCalculator(Calculator):
         ]).astype(np.float64)
 
         w_raw = self.model.predict_weights(feats)
+        if self.raw_cap is not None:
+            n_cap = int(np.sum(w_raw > self.raw_cap))
+            if n_cap:
+                print(f"    [{self.branch}] {n_cap} raw BDT weights above "
+                      f"{self.raw_cap:g} capped (max {w_raw.max():.4g})")
+            w_raw = np.minimum(w_raw, self.raw_cap)
 
         if self.normalize == "per-file":
             cv = a["cvwgt"][mask].astype(np.float64)

@@ -70,8 +70,8 @@ EOF
 | `qe_zexp_mva_to_lqcd` | 13 |
 | `ccqe_xsec_corr` | 8 |
 | `t2k_nc1pi` | 9 |
-| `ub_cc1p0pi` | 20 |
-| `ub_cc2p0pi` | 20 |
+| `ub_cc1p0pi` | 21 |
+| `ub_cc2p0pi` | 21 |
 | `ub_ccpi` | 24 |
 | `flux_hadron_production` | 6 |
 | `flux_horn_current` | 5 |
@@ -80,7 +80,7 @@ EOF
 | `osc_sterile_ic2024_unfolded` | 2 |
 | **union** | **56** |
 
-plus `True | True` on the last line. `ub_cc1p0pi(divide_out_ff=True)` is 31.
+plus `True | True` on the last line. `ub_cc1p0pi(divide_out_ff=True)` is 32.
 
 A count that moves is not automatically wrong — it is wrong if it moved without a
 calculator changing.
