@@ -752,6 +752,20 @@ class MyCalculator(Calculator):
    `sbruce.arrays(self.branches_needed())`, so the declaration cannot drift
    from what is read -- `--check-branches` relies on it. Add the physics
    annotation for any new branch to the `reweight.py` header too.
+4. Add unit tests to `tests/test_units.py`: weights are 1 outside the
+   domain, known inputs give the expected weights, and unfilled (-999)
+   branches are handled. If the calculator adds branches, update the
+   expected counts in `tests/ACCEPTANCE.md` and the preflight tests. Run
+   `./venv/bin/python -m pytest tests/`.
+5. Add validation plots in `validation/my_calc/validate_my_calc.py`, using
+   `validation/common.py`. It should run the real calculator on the CV MC
+   sBruce files, per detector, and write the domain matrix
+   (`fig_domain`), the weight summary, and PASS / WARN / FAIL checks
+   comparing the weights with an independent calculation (closure against
+   the source table or paper, the stored GENIE knobs where one targets the
+   same physics, and so on). Check every sBruce input against what it
+   actually means (see `validation/inputs/`). `validation/run_all.py`
+   picks the script up automatically. Add a row to `validation/README.md`.
 
 ## Repository layout
 
@@ -767,7 +781,8 @@ configs/               example configs
 scripts/               offline builders of the data/ tables and the
                        hard-coded osc_sterile_ic2024_unfolded table
 tests/                 pytest unit tests
-validation/            validation scripts (Nieves vs stored GENIE weights)
+validation/            per-calculator validation plots and checks
+                       (validation/README.md; plots are gitignored)
 MISSING_INFO.md        sBruce information gaps and the placeholders used
 ```
 

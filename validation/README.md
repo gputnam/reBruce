@@ -26,6 +26,8 @@ A FAIL is a finding to read, not a crash: no physics check aborts a script.
 | `minerva_3dqelike/` | 3D lookup and p_z-marginalization closure; signal audit; frame migrations. |
 | `osc_sterile/` | Both osc calculators: units; fixed 110 m vs per-event `baseline`; unfolded table vs the direct ratio. |
 
+Every new calculator should add a `validation/<name>/validate_<name>.py` here, as well as unit tests in `tests/test_units.py`. See "Writing a new calculator" in the top-level README.
+
 `common.py` holds the shared pieces: file discovery, the plot style, the `Output` / check bookkeeping, and the domain-matrix plot.
 
 Older top-level scripts:
