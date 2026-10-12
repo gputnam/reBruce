@@ -287,6 +287,29 @@ def test_ha2025_weights_reasonable():
         assert np.all(w >= 0)
 
 
+def test_pi_fsi_code_mapping():
+    # genie_prefsi_cpi_fsi is GENIE v3 INukeFateHA_t: 2 CEx, 3 Inelas,
+    # 4 Abs, 7 PiProd; 1 (no interaction), -999 and no pion -> 1
+    from fakedata.calculators.pi_fsi import PiFSIhA2025
+    from fakedata.ha2025 import HA2025Reweighter, FATES
+    codes = np.array([2.0, 3.0, 4.0, 7.0, 1.0, -999.0, 3.0])
+    n = len(codes)
+    pz = np.full(n, 0.5)
+    pz[-1] = -999.0                       # no pre-FSI charged pion
+    sb = _StubSBruce({"genie_prefsi_cpi_px": np.zeros(n),
+                      "genie_prefsi_cpi_py": np.zeros(n),
+                      "genie_prefsi_cpi_pz": pz,
+                      "genie_prefsi_cpi_fsi": codes})
+    w = PiFSIhA2025().compute(sb)["fdwgt_pi_fsi_ha2025"]
+    ke = 1000.0 * (np.sqrt(0.25 + 0.13957018 ** 2) - 0.13957018)
+    exp = HA2025Reweighter().weight(
+        np.full(4, ke), np.array([FATES.index(f)
+                                  for f in ("cex", "inel", "abs", "pipro")]))
+    assert np.allclose(w[:4], exp)
+    assert len(set(np.round(exp, 6))) == 4    # the four fates differ here
+    assert np.all(w[4:] == 1.0)
+
+
 # ---------------------------------------------------------------------------
 # MINERvA LE/ME 3D QE-like table and signal definition
 # ---------------------------------------------------------------------------

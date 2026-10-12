@@ -4,20 +4,20 @@ Weight = frac_hA2025 / frac_hA2018 for the FSI fate of the event's leading
 pre-FSI charged pion, evaluated at the pion's pre-FSI kinetic energy on
 Ar40 (see fakedata/ha2025.py and data/ha_pion_fsi_weights_A40.csv).
 
-Fate from the sBruce genie_prefsi_cpi_fsi code (INTRANUKE rescatter code;
-see cafpyana gump/loaddf.py):
-    2 (CEX)    -> cex
-    4 (INELAS) -> "abs" when no charged pion survives to the final state
-                  (true_npi == 0; a pion absorbed on the nucleus is coded
-                  INELAS with no pion daughters), else "inel"
-    7 (PIPROD) -> pipro
-    -1/1/3 (none / no-interaction / elastic) and anything else -> weight 1
+Fate from the sBruce genie_prefsi_cpi_fsi code, the GENIE v3 INTRANUKE hA
+fate (genie::INukeFateHA_t, which has no elastic fate for hA2018):
+    2 (kIHAFtCEx)     -> cex
+    3 (kIHAFtInelas)  -> inel
+    4 (kIHAFtAbs)     -> abs
+    7 (kIHAFtPiProd)  -> pipro
+    -1/1 (none / kIHAFtNoInteraction) and anything else -> weight 1
     (the hA2018 -> hA2025 map is defined for the four fates above only)
+The mapping is verified against GENIE's own FrCEx/FrInel/FrAbs/FrPiProd_pi
+multisigma responses in validate-pionFSI/.
 
-Caveats (see MISSING_INFO.md): only the leading charged pion is stored, so
+Caveat (see MISSING_INFO.md): only the leading charged pion is stored, so
 events with several FSI-scattered pions are reweighted by the leading one
-only; the abs-vs-inel split uses the event-level true_npi count as a proxy
-for "this pion had no pion daughters".
+only.
 """
 
 import numpy as np
@@ -29,13 +29,13 @@ from ..sbruce import valid
 M_PION = 0.13957018  # GeV
 
 FSI_CEX = 2
-FSI_INELAS = 4
+FSI_INELAS = 3
+FSI_ABS = 4
 FSI_PIPROD = 7
 
 BRANCHES = [
     "genie_prefsi_cpi_px", "genie_prefsi_cpi_py", "genie_prefsi_cpi_pz",
     "genie_prefsi_cpi_fsi",
-    "true_npi",
 ]
 
 
@@ -59,9 +59,8 @@ class PiFSIhA2025(Calculator):
         # map FSI code -> FATES index (cex=0, abs=1, inel=2, pipro=3); -1 = no reweight
         fate = np.full(n, -1, dtype=np.int64)
         fate[has_cpi & (fsi == FSI_CEX)] = 0
-        inelas = has_cpi & (fsi == FSI_INELAS)
-        fate[inelas & (a["true_npi"] == 0)] = 1   # absorbed
-        fate[inelas & (a["true_npi"] > 0)] = 2    # inelastic, pion survives
+        fate[has_cpi & (fsi == FSI_ABS)] = 1
+        fate[has_cpi & (fsi == FSI_INELAS)] = 2
         fate[has_cpi & (fsi == FSI_PIPROD)] = 3
 
         mask = fate >= 0

@@ -1,0 +1,26 @@
+pi_fsi_ha2025 validation (validate-pionFSI/validate_pion_fsi.py)
+== SBND: 13 files, 188245 events
+  with pre-FSI pi+-:           27576 (14.6%)
+  reweighted (4 fates):        15802 (8.4%)
+    cex    N=   2968  mean w=0.5378  min=0.3409  max=1.6241
+    abs    N=   7152  mean w=0.9364  min=0.4698  max=1.7207
+    inel   N=   5249  mean w=1.5286  min=0.3305  max=3.8424
+    pipro  N=    433  mean w=0.5173  min=0.4152  max=1.5583
+  mean w (all):             1.0039
+  cvwgt-weighted mean w:    1.0038
+  CC rate change:           -0.0003
+  w range:                  [0.3305, 3.8424]
+  checks: calculator vs independent recomputation max |dw| = 4.2e-06 (< 1e-4), w == 1 off-domain: PASS
+
+== ICARUS: 7 files, 168371 events
+  with pre-FSI pi+-:           30826 (18.3%)
+  reweighted (4 fates):        18773 (11.1%)
+    cex    N=   4204  mean w=0.5213  min=0.3409  max=1.6287
+    abs    N=   8841  mean w=0.9324  min=0.4698  max=1.7166
+    inel   N=   4968  mean w=1.5641  min=0.2106  max=3.8424
+    pipro  N=    760  mean w=0.5309  min=0.4152  max=2.3917
+  mean w (all):             0.9990
+  cvwgt-weighted mean w:    0.9991
+  CC rate change:           -0.0053
+  w range:                  [0.2106, 3.8424]
+  checks: calculator vs independent recomputation max |dw| = 1.7e-05 (< 1e-4), w == 1 off-domain: PASS
