@@ -13,7 +13,7 @@ fate (genie::INukeFateHA_t, which has no elastic fate for hA2018):
     -1/1 (none / kIHAFtNoInteraction) and anything else -> weight 1
     (the hA2018 -> hA2025 map is defined for the four fates above only)
 The mapping is verified against GENIE's own FrCEx/FrInel/FrAbs/FrPiProd_pi
-multisigma responses in validate-pionFSI/.
+multisigma responses in validation/pion_fsi/.
 
 Caveat (see MISSING_INFO.md): only the leading charged pion is stored, so
 events with several FSI-scattered pions are reweighted by the leading one

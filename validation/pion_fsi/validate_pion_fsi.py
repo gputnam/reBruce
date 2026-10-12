@@ -19,11 +19,13 @@ runs the real calculator and checks / plots, per detector (cvwgt-weighted):
   weight_hist       weight distribution per fate
   knob_matrix       per raw genie_prefsi_cpi_fsi code (code 4 split by
                     surviving pi+- count), the fraction of events whose GENIE
-                    FrCEx/FrAbs/FrInel/FrPiProd_pi +1 sigma multisigma
-                    weight is > 1. A fate knob moves the events of its own
-                    fate one way and (by renormalization) every other fate
-                    the other way; in these files +1 sigma LOWERS the own
-                    fate, so each fate shows up as the single ~0 cell in
+                    FrCEx/FrAbs/FrInel/FrPiProd_pi multisigma weight at
+                    the stored sigma LABEL +1 is > 1. A fate knob moves the
+                    events of its own fate one way and (by renormalization)
+                    every other fate the other way. The v1 GENIE knobs'
+                    sigma labels are reversed in sBruce (label +1 holds
+                    GENIE's -1 sigma; see validation/inputs), so label +1
+                    LOWERS the own fate and each fate shows up as the single ~0 cell in
                     its row and non-interacting pions as a row near 0
                     everywhere (weights == 1). An independent check, by
                     GENIE's own reweighter, of which code is which fate.
@@ -38,10 +40,14 @@ Hard checks (assert): calculator weights match an independent recomputation
 < 1e-4 (KE from float32 vs float64 momenta); w == 1
 exactly for events with no reweightable fate.
 
-Writes validate-pionFSI/plots/*.png, plots/pion_fsi_validation.pdf and
-validate-pionFSI/summary.txt.
+Also draws the domain matrix (w != 1 by flavour x CC/NC x mode): the
+calculator has no CC / flavour / mode cut, and the table (pi+ on A=40) is
+applied to pi- too -- genie_prefsi_cpi_* is |pdg| == 211, the sign is not
+stored in sbn-rewgted-20.
 
-Usage: ./venv/bin/python validate-pionFSI/validate_pion_fsi.py
+Writes validation/plots/pion_fsi/*.png, pion_fsi.pdf and summary.txt.
+
+Usage: ./venv/bin/python validation/pion_fsi/validate_pion_fsi.py
            [--max-files N] [files...]
        (default: every CV MC file in the sbn-rewgted-20 sBruce directory)
 """
@@ -59,7 +65,10 @@ import numpy as np                                           # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages         # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", ".."))
 sys.path.insert(0, os.path.join(HERE, ".."))
+
+import common                                                # noqa: E402
 
 from fakedata.calculators.pi_fsi import M_PION, PiFSIhA2025  # noqa: E402
 from fakedata.ha2025 import CSV_PATH, FATES                  # noqa: E402
@@ -68,14 +77,14 @@ from fakedata.sbruce import MODE_DIS, MODE_RES, SBruceFile, valid  # noqa: E402
 DEFAULT_DIR = "/Users/gputnam/Work/osc/sbn-rewgted-20-sBruce/sbn-rewgted-20"
 DEFAULT_GLOBS = ["SBNDMCCV_*_sbruce.root",
                  "ICARUSRun*_SpringMCOverlay_rewgt_*_sbruce.root"]
-PLOT_DIR = os.path.join(HERE, "plots")
-SUMMARY = os.path.join(HERE, "summary.txt")
+PLOT_DIR = os.path.join(common.PLOT_ROOT, "pion_fsi")
+SUMMARY = os.path.join(PLOT_DIR, "summary.txt")
 
 FSI_NOINT = 1         # kIHAFtNoInteraction
 
 BRANCHES = ["genie_prefsi_cpi_px", "genie_prefsi_cpi_py", "genie_prefsi_cpi_pz",
             "genie_prefsi_cpi_fsi", "true_npi", "true_npi0", "true_cpi_p",
-            "genie_mode", "true_isnc", "nu_E", "cvwgt"]
+            "genie_mode", "true_isnc", "true_pdg", "nu_E", "cvwgt"]
 KNOBS = ["FrCEx_pi", "FrAbs_pi", "FrInel_pi", "FrPiProd_pi"]   # FATES order
 KNOB_FMT = "GENIEReWeight_SBN_v1_multisigma_{}"
 
@@ -161,7 +170,9 @@ def process(path, table):
     sb.close()
     return dict(ke=ke, fsi=fsi, fate=fate, w=w, has=has, npi=npi,
                 npi0=a["true_npi0"], cpi_p=a["true_cpi_p"],
-                mode=a["genie_mode"], isnc=a["true_isnc"], nu_E=a["nu_E"],
+                mode=a["genie_mode"], genie_mode=a["genie_mode"],
+                true_isnc=a["true_isnc"], true_pdg=a["true_pdg"],
+                isnc=a["true_isnc"], nu_E=a["nu_E"],
                 cvwgt=a["cvwgt"], up=up, dw=np.full(n, dw),
                 knob_ok=np.full(n, knob_ok))
 
@@ -325,7 +336,7 @@ def fig_knob_matrix(d, det):
     ax.set_xticks(range(4), [k.replace("_pi", "") for k in KNOBS])
     ax.set_yticks(range(len(rows)),
                   [f"{r} (N={nf[i]})" for i, (r, _) in enumerate(rows)])
-    ax.set_xlabel("GENIE knob whose +1 sigma weight > 1")
+    ax.set_xlabel("GENIE knob whose weight at sigma label +1 is > 1")
     ax.set_ylabel("genie_prefsi_cpi_fsi -> pi_fsi_ha2025 fate")
     ax.grid(False)
     fig.colorbar(im, ax=ax, label="fraction of events")
@@ -420,14 +431,16 @@ def main():
     rng = np.random.default_rng(1)
     os.makedirs(PLOT_DIR, exist_ok=True)
     summaries = []
-    with PdfPages(os.path.join(PLOT_DIR, "pion_fsi_validation.pdf")) as pdf:
+    with PdfPages(os.path.join(PLOT_DIR, "pion_fsi.pdf")) as pdf:
         for det in sorted(by_det, reverse=True):          # SBND first
             parts = []
             for f in by_det[det]:
                 print(f"{os.path.basename(f)}")
                 parts.append(process(f, table))
             d = concat(parts)
-            figs = {"weight_vs_ke": fig_weight_vs_ke(d, det, table, rng),
+            figs = {"domain": common.fig_domain(
+                        d, {"pi_fsi_ha2025": d["w"]}, det, "pi_fsi_ha2025"),
+                    "weight_vs_ke": fig_weight_vs_ke(d, det, table, rng),
                     "fsi_code_vs_ke": fig_fsi_codes(d, det),
                     "fate_closure": fig_fate_closure(d, det, table),
                     "weight_hist": fig_weight_hist(d, det),
@@ -443,7 +456,7 @@ def main():
             print(s)
             summaries.append(s)
     with open(SUMMARY, "w") as f:
-        f.write("pi_fsi_ha2025 validation (validate-pionFSI/validate_pion_fsi.py)\n")
+        f.write("pi_fsi_ha2025 validation (validation/pion_fsi/validate_pion_fsi.py)\n")
         f.write("\n\n".join(summaries) + "\n")
     print(f"wrote {PLOT_DIR}/ and {SUMMARY}")
 
