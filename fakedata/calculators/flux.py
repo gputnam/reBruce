@@ -40,7 +40,7 @@ Per matched true neutrino, all of it flux ancestry GENIE copies from the
 flux entry into the CAF (rec.mc.nu.*, or rec.slc.truth.* for a slice):
 
   CAF field                     sBruce branch (default option value)   used by
-  rec.mc.nu.parent_pdg          true_parent_pdg        (int)           both
+  rec.mc.nu.parent_pdg          true_parent_dcy_pdg        (int)           both
   rec.mc.nu.parent_dcy_mom.x    true_parent_dcy_mom_x  [GeV/c]         both
   rec.mc.nu.parent_dcy_mom.y    true_parent_dcy_mom_y  [GeV/c]         both
   rec.mc.nu.parent_dcy_mom.z    true_parent_dcy_mom_z  [GeV/c]         both
@@ -70,7 +70,7 @@ from ..sbruce import valid
 DEFAULT_BRANCHES = {
     "pdg_branch": "true_pdg",
     "energy_branch": "true_E",
-    "parent_pdg_branch": "true_parent_pdg",
+    "parent_pdg_branch": "true_parent_dcy_pdg",
     "parent_px_branch": "true_parent_dcy_mom_x",
     "parent_py_branch": "true_parent_dcy_mom_y",
     "parent_pz_branch": "true_parent_dcy_mom_z",
